@@ -123,8 +123,10 @@ export class P2PHost {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
         this.peers.set(peer, pc);
         this.events.onViewers(this.peers.size);
-        const stream = new MediaStream([this.video, ...(this.audio ? [this.audio] : [])]);
-        const video = pc.addTransceiver(this.video, { direction: "sendonly", streams: [stream], sendEncodings: [this.encoding()] });
+        // Vídeo e áudio em streams separados: no mesmo stream o navegador de quem assiste sincroniza
+        // um com o outro e, quando o buffer do áudio cresce, segura o vídeo (fica em câmera lenta).
+        // Os dois já saem quase sem atraso daqui, então sem sincronizar fica melhor.
+        const video = pc.addTransceiver(this.video, { direction: "sendonly", streams: [new MediaStream([this.video])], sendEncodings: [this.encoding()] });
         // H.264 primeiro: o encoder da GPU e qualquer navegador tocam.
         const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
         const h264 = codecs.filter((c) => c.mimeType.toLowerCase() === "video/h264");
@@ -132,7 +134,7 @@ export class P2PHost {
         // Jogo: perder resolução antes de perder fluidez quando a rede apertar.
         const parameters = video.sender.getParameters();
         video.sender.setParameters({ ...parameters, degradationPreference: "maintain-framerate" } as RTCRtpSendParameters).catch(() => {});
-        if (this.audio) pc.addTransceiver(this.audio, { direction: "sendonly", streams: [stream] });
+        if (this.audio) pc.addTransceiver(this.audio, { direction: "sendonly", streams: [new MediaStream([this.audio])] });
 
         pc.onicecandidate = (event) => {
             if (event.candidate) this.send({ type: "signal", peer, data: { candidate: event.candidate.toJSON() } });

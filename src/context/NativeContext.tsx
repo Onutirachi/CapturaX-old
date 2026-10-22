@@ -449,10 +449,13 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
     const openOutputDialog = () => {
         refreshCaptureSources();
         setOutputDialogOpen(true);
-        // Liga o servidor já, para o link (e a porta no roteador) estar pronto na janela.
-        // Liga o servidor do link direto já, para o link (e a porta no roteador) estar pronto na janela.
-        if (streaming !== "active" && configRef.current && !p2pActive(configRef.current)) native.streamPrepare().catch(() => {});
     };
+    // Com a janela aberta no link direto, liga o servidor já, para o link (e a porta no roteador)
+    // estar pronto. Também ao desligar o P2P com a janela aberta.
+    const directLinkWanted = outputDialogOpen && streaming !== "active" && !!config && !p2pActive(config);
+    useEffect(() => {
+        if (directLinkWanted) native.streamPrepare().catch(() => {});
+    }, [directLinkWanted]);
     const closeOutputDialog = () => {
         setOutputDialogOpen(false);
         if (streaming === "idle") native.streamUnprepare().catch(() => {});

@@ -93,6 +93,9 @@ export type UpnpStatus =
 
 export type ViewerInfo = { ip: string; watchingSecs: number };
 
+/** Cor do vídeo em códigos da ISO/IEC 23091-2 (vai no MP4 e no SPS do H.264). */
+export type VideoColor = { primaries: number; transfer: number; matrix: number; fullRange: boolean };
+
 export type ServerStatus = {
     running: boolean;
     port: number;
@@ -142,8 +145,8 @@ export const native = {
     streamUnprepare: () => invoke<void>("stream_unprepare"),
     mediaStatus: () => invoke<MediaStatus>("media_status"),
 
-    videoConfig: (session: number, codec: string, description: Uint8Array, width: number, height: number) =>
-        invoke<void>("media_video_config", { session, codec, description: Array.from(description), width, height }),
+    videoConfig: (session: number, codec: string, description: Uint8Array, width: number, height: number, color: VideoColor | null) =>
+        invoke<void>("media_video_config", { session, codec, description: Array.from(description), width, height, color }),
     /** Pacote de vídeo codificado; vai como corpo binário (sem JSON) e os metadados nos cabeçalhos. */
     videoChunk: (session: number, data: Uint8Array, ptsUs: number, key: boolean) =>
         invoke<void>("media_video_chunk", data, {

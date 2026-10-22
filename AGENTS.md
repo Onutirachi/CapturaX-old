@@ -75,6 +75,10 @@ src-tauri/src/
 - **Chromium encoder quirks** (`presets.ts`, `media/bitstream.rs`): HEVC needs the
   `PlatformHEVCEncoderSupport` feature (set in `tauri.conf.json` `additionalBrowserArgs`) and comes
   as Annex B without a description; above 1080p, >30 fps is only accepted without `framerate`.
+  Capture cards in MJPEG deliver full-range BT.601 frames; the GPU encoder keeps them as-is but
+  writes no color info, so players would assume limited range (dark, crushed blacks). The worker
+  sends the color the encoder reports (`decoderConfig.colorSpace`) with the config, and Rust
+  writes it into the H.264 SPS VUI (`bitstream::set_avc_color`) and a `colr` box (both codecs).
 
 ### Outputs (record / stream)
 The top bar only picks the preview device: that is what you see and hear. Recording and streaming

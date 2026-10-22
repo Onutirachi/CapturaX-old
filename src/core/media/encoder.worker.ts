@@ -1,6 +1,7 @@
 // Worker de codificação: lê frames da trilha de vídeo, reduz resolução/FPS se preciso e
 // codifica na GPU (VideoEncoder com prefer-hardware). Fora da thread da interface para não
 // atrasar o preview.
+import type { VideoColor } from "../native/api";
 import { encoderConfig, type EncoderSettings } from "./presets";
 
 export type ToWorker =
@@ -9,7 +10,7 @@ export type ToWorker =
     | { type: "stop" };
 
 export type FromWorker =
-    | { type: "config"; codec: string; description: ArrayBuffer; width: number; height: number }
+    | { type: "config"; codec: string; description: ArrayBuffer; width: number; height: number; color: VideoColor | null }
     | { type: "chunk"; data: ArrayBuffer; absUs: number; key: boolean }
     | { type: "error"; message: string }
     | { type: "stopped"; dropped: number };
@@ -41,6 +42,25 @@ function toBytes(source: AllowSharedBufferSource): ArrayBuffer {
     return new Uint8Array(source as SharedArrayBuffer).slice().buffer;
 }
 
+// Códigos da ISO/IEC 23091-2 para os nomes do WebCodecs (2 = não especificado).
+const PRIMARIES: Record<string, number> = { bt709: 1, bt470bg: 5, smpte170m: 6, bt2020: 9, smpte432: 12 };
+const TRANSFER: Record<string, number> = { bt709: 1, smpte170m: 6, linear: 8, "iec61966-2-1": 13, pq: 16, hlg: 18 };
+const MATRIX: Record<string, number> = { rgb: 0, bt709: 1, bt470bg: 5, smpte170m: 6, "bt2020-ncl": 9 };
+
+/**
+ * Cor do vídeo como o encoder informou. Placas em MJPEG entregam faixa completa (0–255) e matriz
+ * BT.601; o encoder codifica assim mas não escreve no vídeo, então o Rust escreve.
+ */
+function videoColor(space: VideoColorSpaceInit | undefined): VideoColor | null {
+    if (!space || space.fullRange == null) return null;
+    return {
+        primaries: PRIMARIES[space.primaries ?? ""] ?? 2,
+        transfer: TRANSFER[space.transfer ?? ""] ?? 2,
+        matrix: MATRIX[space.matrix ?? ""] ?? 2,
+        fullRange: space.fullRange,
+    };
+}
+
 function createEncoder() {
     encoder = new VideoEncoder({
         output: (chunk, metadata) => {
@@ -50,7 +70,8 @@ function createEncoder() {
             if (!configSent) {
                 configSent = true;
                 const copy = description ? toBytes(description) : new ArrayBuffer(0);
-                post({ type: "config", codec: settings.codec, description: copy, width: settings.width, height: settings.height }, [copy]);
+                const color = videoColor(metadata?.decoderConfig?.colorSpace);
+                post({ type: "config", codec: settings.codec, description: copy, width: settings.width, height: settings.height, color }, [copy]);
             }
             const data = new ArrayBuffer(chunk.byteLength);
             chunk.copyTo(data);

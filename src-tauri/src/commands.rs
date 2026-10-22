@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio::{display_name, AudioEngine, DeviceInfo, MixSettings, PreviewSettings};
 use crate::clock;
 use crate::config::{Config, ConfigStore};
-use crate::media::fmp4::VideoTrack;
+use crate::media::fmp4::{VideoColor, VideoTrack};
 use crate::media::{parse_codec, FileSink, MediaManager, SessionKind, SessionOptions, SessionStatus};
 use crate::stream::{firewall, LiveSink, ServerStatus, StreamServer};
 
@@ -455,9 +455,9 @@ pub async fn stream_stop(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn media_video_config(state: State<'_, AppState>, session: u32, codec: String, description: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+pub fn media_video_config(state: State<'_, AppState>, session: u32, codec: String, description: Vec<u8>, width: u32, height: u32, color: Option<VideoColor>) -> Result<(), String> {
     let parsed = parse_codec(&codec).ok_or_else(|| format!("Unsupported codec {codec}"))?;
-    state.media.video_config(session, VideoTrack { codec: parsed, description, width, height, codec_string: codec });
+    state.media.video_config(session, VideoTrack { codec: parsed, description, width, height, codec_string: codec, color });
     Ok(())
 }
 

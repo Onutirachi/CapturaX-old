@@ -24,6 +24,18 @@ pub struct VideoTrack {
     pub height: u32,
     /// Codec no formato RFC 6381 (`avc1.640033`), para o MediaSource de quem assiste.
     pub codec_string: String,
+    /// Cor do vídeo como o encoder informou (vai no `colr` e, no H.264, no SPS).
+    pub color: Option<VideoColor>,
+}
+
+/// Códigos da ISO/IEC 23091-2 (os mesmos do H.264/HEVC e do `colr`).
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoColor {
+    pub primaries: u8,
+    pub transfer: u8,
+    pub matrix: u8,
+    pub full_range: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -183,6 +195,15 @@ fn video_sample_entry(w: &mut Writer, video: &VideoTrack) {
     w.begin(config);
     w.bytes(&video.description);
     w.end();
+    if let Some(color) = video.color {
+        w.begin(b"colr");
+        w.bytes(b"nclx");
+        w.u16(color.primaries as u16);
+        w.u16(color.transfer as u16);
+        w.u16(color.matrix as u16);
+        w.u8(if color.full_range { 0x80 } else { 0 });
+        w.end();
+    }
     w.end();
 }
 

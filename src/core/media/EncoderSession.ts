@@ -44,7 +44,7 @@ export default class EncoderSession {
         switch (message.type) {
             case "config":
                 this.sending = this.sending
-                    .then(() => native.videoConfig(this.sessionId, message.codec, new Uint8Array(message.description), message.width, message.height))
+                    .then(() => native.videoConfig(this.sessionId, message.codec, new Uint8Array(message.description), message.width, message.height, message.color))
                     .then(() => this.resolveConfigured())
                     .catch((error) => this.onError(errorText(error)));
                 break;

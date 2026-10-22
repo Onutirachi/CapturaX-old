@@ -372,6 +372,12 @@ fn run_session(options: SessionOptions, receiver: mpsc::Receiver<Message>, stats
                 // Depois de começar, o formato não pode mudar no meio do arquivo.
                 if state.video.is_none() {
                     state.annexb = track.description.is_empty();
+                    let mut track = track;
+                    if let (VideoCodec::Avc, Some(color)) = (track.codec, track.color) {
+                        if let Some(description) = bitstream::set_avc_color(&track.description, color) {
+                            track.description = description;
+                        }
+                    }
                     state.video = Some(track);
                 }
             }
@@ -463,7 +469,7 @@ mod tests {
             part_secs: Some(0.1),
         };
         let thread = std::thread::spawn(move || run_session(options, receiver, Arc::new(Stats::default())));
-        let track = VideoTrack { codec: VideoCodec::Avc, description, width: 1280, height: 720, codec_string: "avc1.64001f".into() };
+        let track = VideoTrack { codec: VideoCodec::Avc, description, width: 1280, height: 720, codec_string: "avc1.64001f".into(), color: None };
         sender.send(Message::VideoConfig(track)).unwrap();
 
         println!("live on http://127.0.0.1:18787/ for {secs}s");
@@ -520,7 +526,7 @@ mod tests {
             i += 13 + size;
         }
         let codec = std::fs::read_to_string(dir.join("codec.txt")).ok().and_then(|c| parse_codec(c.trim())).unwrap_or(VideoCodec::Avc);
-        let track = VideoTrack { codec, description, width: 1280, height: 720, codec_string: "avc1.64001f".into() };
+        let track = VideoTrack { codec, description, width: 1280, height: 720, codec_string: "avc1.64001f".into(), color: None };
         let base: i64 = 5_000_000_000;
         let end = frames.last().unwrap().0;
 
