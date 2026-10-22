@@ -153,7 +153,9 @@ impl StreamServer {
         }
         if let Some(current) = running.take() {
             let _ = current.shutdown.send(true);
-            let _ = current.task.await;
+            // Não espera para sempre: o UPnP pode demorar a responder (roteador lento). A tarefa
+            // termina sozinha em segundo plano; o "Parar" da transmissão não pode travar nisso.
+            let _ = tokio::time::timeout(SHUTDOWN_WAIT, current.task).await;
         }
         *self.upnp_status.lock().unwrap() = UpnpStatus::Disabled;
         *self.error.lock().unwrap() = None;
@@ -258,9 +260,17 @@ fn lan_ip() -> Option<IpAddr> {
     socket.local_addr().ok().map(|a| a.ip())
 }
 
+/// Quanto o desligamento do servidor espera as tarefas (UPnP) terminarem.
+const SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 async fn manage_upnp(port: u16, status: Arc<Mutex<UpnpStatus>>, mut shutdown: watch::Receiver<bool>) {
     *status.lock().unwrap() = UpnpStatus::Searching;
-    let mapping = match upnp::map(port).await {
+    // A busca pelo roteador pode levar segundos: desligar no meio dela não espera o fim.
+    let mapped = tokio::select! {
+        mapped = upnp::map(port) => mapped,
+        _ = shutdown.changed() => return,
+    };
+    let mapping = match mapped {
         Ok((mapping, mapped)) => {
             *status.lock().unwrap() = mapped;
             mapping
@@ -280,7 +290,8 @@ async fn manage_upnp(port: u16, status: Arc<Mutex<UpnpStatus>>, mut shutdown: wa
             _ = shutdown.changed() => break,
         }
     }
-    mapping.remove().await;
+    // Tirar a porta do roteador também não pode segurar o desligamento.
+    let _ = tokio::time::timeout(SHUTDOWN_WAIT, mapping.remove()).await;
 }
 
 async fn accept_loop(listener: TcpListener, router: Router, hub: Arc<StreamHub>, connections: Arc<Connections>, mut shutdown: watch::Receiver<bool>) {

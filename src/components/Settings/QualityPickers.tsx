@@ -52,20 +52,16 @@ export function ResolutionPicker({ value, source, onChange, fullWidth }: { value
     );
 }
 
-/** `value = null` = nativo. */
+/** `value = null` = o FPS da fonte, que aparece marcado na própria lista (sem opção "Nativo"). */
 export function FpsPicker({ value, source, onChange, fullWidth }: { value: number | null; source: SourceInfo; onChange: (value: number | null) => void; fullWidth?: boolean }) {
     const t = useT();
     const sourceFps = Math.round(source.fps);
-    const options = FRAMERATE_LIST.filter((f) => f <= sourceFps || f === value);
+    const options = [...new Set([sourceFps, ...FRAMERATE_LIST.filter((f) => f <= sourceFps), ...(value ? [value] : [])])].sort((a, b) => b - a);
     return (
-        <DropDown title={t("toolbar.framerate")} fullWidth={fullWidth} value={value ? String(value) : NATIVE} onChoose={(v) => onChange(v === NATIVE ? null : Number(v))}>
-            <DropOption value={NATIVE}>
-                {t("quality.nativeShort")}
-                <Tag text={`${formatFps(sourceFps)} FPS`} color={fpsColor(sourceFps)} />
-            </DropOption>
-            {[...options].map((f) => (
+        <DropDown title={t("toolbar.framerate")} fullWidth={fullWidth} value={String(value ?? sourceFps)} onChoose={(v) => onChange(Number(v) === sourceFps ? null : Number(v))}>
+            {options.map((f) => (
                 <DropOption key={f} value={String(f)}>
-                    <Tag text={`${f} FPS`} color={fpsColor(f)} />
+                    <Tag text={`${formatFps(f)} FPS`} color={fpsColor(f)} />
                 </DropOption>
             ))}
         </DropDown>

@@ -114,10 +114,18 @@ const STREAM_BITRATES: [number, number, number][] = [
     [2160, 16000, 24000],
 ];
 
-/** Bitrate automático da transmissão para a resolução/FPS escolhidos. */
+/** Teto do automático (a partir daí, só no manual). */
+const MAX_AUTO_STREAM_KBPS = 50_000;
+
+/**
+ * Bitrate automático da transmissão para a resolução/FPS escolhidos. A tabela dá 30 e 60 fps; entre
+ * eles interpola, e acima de 60 cresce um pouco menos que o FPS (quadros seguidos se parecem mais),
+ * para cada quadro não ficar com menos bits: 1080p a 144 fps ≈ 16 Mbps.
+ */
 export function autoStreamBitrateKbps(height: number, fps: number) {
-    const row = STREAM_BITRATES.find(([h]) => height <= h) ?? STREAM_BITRATES[STREAM_BITRATES.length - 1];
-    return fps > 30 ? row[2] : row[1];
+    const [, at30, at60] = STREAM_BITRATES.find(([h]) => height <= h) ?? STREAM_BITRATES[STREAM_BITRATES.length - 1];
+    const kbps = fps <= 30 ? at30 : fps <= 60 ? at30 + ((at60 - at30) * (fps - 30)) / 30 : at60 * Math.pow(fps / 60, 0.8);
+    return Math.min(MAX_AUTO_STREAM_KBPS, Math.round(kbps / 100) * 100);
 }
 
 /** Cabe dentro de `maxWidth`×`maxHeight` mantendo a proporção da fonte (nunca aumenta). */

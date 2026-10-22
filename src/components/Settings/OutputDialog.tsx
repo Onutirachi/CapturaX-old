@@ -138,6 +138,11 @@ export default function OutputDialog() {
         stopStream: !choice.stream && live,
         applyStream: choice.stream && live && nctx.streamDirty,
     };
+    // Rodando e nada para começar, aplicar ou desligar: o botão para o que está rodando.
+    if (!plan.startRecord && !plan.startStream && !plan.stopRecord && !plan.stopStream && !plan.applyStream) {
+        plan.stopRecord = recordingOn;
+        plan.stopStream = live;
+    }
     const starts = plan.startRecord || plan.startStream;
     const stops = plan.stopRecord || plan.stopStream;
     const action = starts || plan.applyStream
