@@ -1,0 +1,18 @@
+[package]
+name = "capturax-signal"
+version = "0.1.0"
+edition = "2021"
+description = "Sinalização WebRTC do CapturaX: só apresenta quem transmite a quem assiste (nenhum vídeo passa por aqui)"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
