@@ -154,6 +154,10 @@ Video source manager, instantiated once in `ToolbarContent`:
   `--color-info` (#3b82f6 blue: informational), `--color-bad` (#ef4444: errors and REC)
 - The viewer imports `viewer/viewer.css`, which adds `@source "../src"` so Tailwind sees shared components
 - Icons are Tabler outline SVGs in `public/assets/`, rendered as CSS masks by `Overlay/Icon`
+- **Asset URLs in CSS must be absolute.** In the built app the CSS lives in `/assets/index.css`, so a
+  relative `url(./assets/x.svg)` in a Tailwind class or inside a CSS variable (`--src: url(...)`)
+  resolves to `/assets/assets/x.svg` and the icon disappears (dev mode inlines the CSS and hides
+  this). Use `/assets/...` in classes and `new URL(src, document.baseURI).href` for variables.
 
 ### Tauri-Specific Patterns
 - Frameless window: drag region via `data-tauri-drag-region` on `WindowBar`

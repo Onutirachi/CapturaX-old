@@ -209,7 +209,7 @@ export function DropDown({ children, title, onChoose = (_) => {}, storageKey = t
                     ))}
                 </div>
                 <div
-                    className={`h-[50%] aspect-square ml-auto shrink-0 bg-center mask-contain mask-no-repeat mask-[url(./assets/DropDown/chevron.svg)] bg-white transition ${
+                    className={`h-[50%] aspect-square ml-auto shrink-0 bg-center mask-contain mask-no-repeat mask-[url(/assets/DropDown/chevron.svg)] bg-white transition ${
                         open ? "-rotate-180" : "rotate-0"
                     }`}></div>
             </div>

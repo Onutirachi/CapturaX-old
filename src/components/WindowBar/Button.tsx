@@ -18,7 +18,8 @@ type ButtonContentProps = {
 export function ButtonContent({ icon, color = "transparent", hoverColor = "transparent" }: ButtonContentProps) {
     const className = `w-full h-[80%] flex items-center justify-center mask-contain mask-center mask-no-repeat mask-(--icon) bg-(--color) group-hover:bg-(--hover-color) transition`;
     const style = {
-        "--icon": `url(${icon})`,
+        // Endereço completo: `url()` relativo em variável CSS é resolvido a partir do arquivo CSS.
+        "--icon": `url("${new URL(icon, document.baseURI).href}")`,
         "--color": color,
         "--hover-color": hoverColor,
     } as preact.CSSProperties;

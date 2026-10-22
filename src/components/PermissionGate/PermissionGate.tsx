@@ -67,7 +67,7 @@ export default function PermissionGate({ children }: { children: ComponentChildr
         <div className="absolute inset-0 flex items-center justify-center p-5">
             <div className="flex flex-col items-center gap-4 max-w-md p-8 text-center rounded-xl bg-(--background-color-darker)/80 backdrop-blur-xs [border:var(--border)]">
                 <img src="./assets/Brand/logo.svg" alt="CapturaX" draggable={false} className="h-8 mb-4 select-none" />
-                <div className="w-10 h-10 mask-center mask-contain mask-no-repeat bg-bad mask-[url(./assets/Alerts/error.svg)]" />
+                <div className="w-10 h-10 mask-center mask-contain mask-no-repeat bg-bad mask-[url(/assets/Alerts/error.svg)]" />
                 <h1 className="text-xl font-semibold">{t(title)}</h1>
                 <p className="text-(--text-muted)">{t(text)}</p>
                 <div className="flex gap-3 mt-2">

@@ -101,7 +101,7 @@ export default function VideoStream() {
         <div className="w-full h-full flex items-center justify-center relative">
             {hidden && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--text-muted) pointer-events-none">
-                    <div className="w-10 h-10 mask-center mask-contain mask-no-repeat bg-(--text-muted) mask-[url(./assets/Dock/preview_off.svg)]" />
+                    <div className="w-10 h-10 mask-center mask-contain mask-no-repeat bg-(--text-muted) mask-[url(/assets/Dock/preview_off.svg)]" />
                     <span>{t("preview.hidden")}</span>
                     <span className="text-sm">{t("preview.hiddenHint")}</span>
                 </div>
