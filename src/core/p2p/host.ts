@@ -96,7 +96,7 @@ export class P2PHost {
     }
 
     private async addPeer(peer: number) {
-        if (this.peers.size >= this.maxViewers) {
+        if (this.maxViewers > 0 && this.peers.size >= this.maxViewers) {
             this.send({ type: "kick", peer });
             return;
         }

@@ -316,20 +316,15 @@ export const en = {
     "output.stopStreaming": "Stop streaming",
 
     "p2p.label": "No ports (P2P)",
-    "p2p.hint": "Viewers connect straight to this PC, no port opening needed; each one uses the full stream bitrate of your upload (up to {max} people).",
+    "p2p.hint": "Viewers connect straight to this PC, no port opening needed; each one uses the full stream bitrate of your upload.",
     "p2p.connecting": "Connecting to the P2P server…",
     "p2p.title": "Link without opening ports (P2P)",
     "p2p.description": "The video goes straight from this PC to each viewer (WebRTC). The server only introduces the two sides; no video passes through it.",
     "p2p.linkHint": "Always the same. A new link makes the old one stop working.",
     "p2p.newLink": "New link",
-    "p2p.maxViewers": "Max P2P viewers",
-    "p2p.maxViewersHint": "Each one uses your upload: 5 people at 8 Mbps need 40 Mbps.",
     "p2p.server": "Signaling server",
     "p2p.unauthorized": "The P2P server refused the password (wrong, or changed by its owner).",
     "p2p.switch": "P2P",
-
-    "direct.switch": "Direct link",
-
     "p2p.notConfigured": "Set up a P2P server in Settings → Streaming to use the link without opening ports.",
     "p2p.serverHint": "Your own server (see relay/README.md in the project), e.g. mycapturax.duckdns.org.",
     "p2p.password": "Password",
@@ -346,6 +341,9 @@ export const en = {
     "p2p.usageNone": "None set: only you (admin) can stream through this server.",
     "p2p.usageSaved": "Saved. Whoever used the old one was disconnected.",
     "p2p.usageFailed": "Could not save (check the connection).",
+
+    "viewers.limit": "Max viewers",
+    "viewers.unlimited": "Unlimited",
 } as const;
 
 export type MessageKey = keyof typeof en;

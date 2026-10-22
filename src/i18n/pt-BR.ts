@@ -316,20 +316,15 @@ export const ptBR: Messages = {
     "output.stopStreaming": "Parar transmissão",
 
     "p2p.label": "Sem abrir porta (P2P)",
-    "p2p.hint": "Quem assiste conecta direto a este PC, sem abrir porta; cada pessoa usa o bitrate inteiro da transmissão do seu upload (até {max} pessoas).",
+    "p2p.hint": "Quem assiste conecta direto a este PC, sem abrir porta; cada pessoa usa o bitrate inteiro da transmissão do seu upload.",
     "p2p.connecting": "Conectando ao servidor P2P…",
     "p2p.title": "Link sem abrir porta (P2P)",
     "p2p.description": "O vídeo vai direto deste PC para cada espectador (WebRTC). O servidor só apresenta os dois lados; nenhum vídeo passa por ele.",
     "p2p.linkHint": "Sempre o mesmo. Gerar um novo faz o antigo parar de funcionar.",
     "p2p.newLink": "Gerar outro",
-    "p2p.maxViewers": "Máximo de espectadores P2P",
-    "p2p.maxViewersHint": "Cada um usa o seu upload: 5 pessoas a 8 Mbps precisam de 40 Mbps.",
     "p2p.server": "Servidor de sinalização",
     "p2p.unauthorized": "O servidor P2P recusou a senha (errada, ou trocada pelo dono do servidor).",
     "p2p.switch": "P2P",
-
-    "direct.switch": "Link direto",
-
     "p2p.notConfigured": "Configure um servidor P2P em Configurações → Transmissão para usar o link sem abrir porta.",
     "p2p.serverHint": "O seu servidor (veja relay/README.md no projeto), ex.: meucapturax.duckdns.org.",
     "p2p.password": "Senha",
@@ -346,4 +341,7 @@ export const ptBR: Messages = {
     "p2p.usageNone": "Nenhuma definida: só você (admin) transmite por este servidor.",
     "p2p.usageSaved": "Salva. Quem usava a antiga foi desconectado.",
     "p2p.usageFailed": "Não foi possível salvar (confira a conexão).",
+
+    "viewers.limit": "Limite de espectadores",
+    "viewers.unlimited": "Ilimitado",
 };

@@ -125,9 +125,7 @@ pub struct StreamConfig {
     pub bitrate_kbps: u32,
     pub audio_bitrate_kbps: u32,
     pub blocked_ips: Vec<String>,
-    /// Link direto (servido por este PC: IPv4/IPv6/rede local). Desligado, nem codifica para ele.
-    pub direct_enabled: bool,
-    /// Link P2P (WebRTC): quem assiste conecta direto, sem abrir porta. A VPS só apresenta os dois.
+    /// `true` = link P2P (WebRTC, sem abrir porta); `false` = link direto servido por este PC.
     pub p2p_enabled: bool,
     /// Servidor de sinalização (`relay/`), ex.: `meucapturax.duckdns.org`. Vazio = sem P2P.
     pub p2p_server: String,
@@ -135,8 +133,8 @@ pub struct StreamConfig {
     pub p2p_password: String,
     /// Segredo deste app; a sala do link é `sha256(segredo)`. Gerado pelo app na primeira vez.
     pub p2p_key: String,
-    /// Cada espectador P2P usa o seu upload inteiro do vídeo: limite de pessoas ao mesmo tempo.
-    pub p2p_max_viewers: u32,
+    /// Pessoas assistindo ao mesmo tempo (P2P ou link direto); 0 = sem limite.
+    pub max_viewers: u32,
 }
 
 impl Default for StreamConfig {
@@ -152,13 +150,12 @@ impl Default for StreamConfig {
             bitrate_kbps: 4_500,
             audio_bitrate_kbps: 128,
             blocked_ips: Vec::new(),
-            direct_enabled: true,
             p2p_enabled: true,
             // Projeto aberto: cada um configura o próprio servidor (ver relay/README.md).
             p2p_server: String::new(),
             p2p_password: String::new(),
             p2p_key: String::new(),
-            p2p_max_viewers: 5,
+            max_viewers: 0,
         }
     }
 }

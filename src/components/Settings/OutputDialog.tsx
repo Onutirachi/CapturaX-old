@@ -3,10 +3,10 @@
 // (inclusive os checkboxes) fica salvo, mesmo fechando sem começar.
 import { type ComponentChildren } from "preact";
 import { useContext, useEffect, useState } from "preact/hooks";
-import { NativeContext, p2pConfigured } from "../../context/NativeContext";
+import { NativeContext, p2pActive, p2pConfigured } from "../../context/NativeContext";
 import Icon from "../Overlay/Icon";
 import { errorText, useT } from "../../i18n";
-import { Button, CopyField, Toggle } from "./controls";
+import { Button, CopyField, Select, Toggle } from "./controls";
 import { OutputAudio, OutputSourcePicker } from "./OutputSource";
 import { RecordingQuality } from "./RecordingTab";
 import { BitrateControl, StreamQualityPicker, UploadNote } from "./StreamQuality";
@@ -37,29 +37,36 @@ function P2PLink() {
                 <CopyField value={nctx.p2pLink} fullWidth />
             </div>
             <p className="text-sm text-(--text-muted)">
-                {t("p2p.hint", { max: nctx.config!.stream.p2pMaxViewers })}
+                {t("p2p.hint")}
                 {live && nctx.p2pState !== "online" && ` ${t("p2p.connecting")}`}
             </p>
         </div>
     );
 }
 
-/** P2P e link direto, ligados/desligados aqui (o P2P só com servidor configurado). */
-function LinkSwitches() {
+const VIEWER_LIMITS = [0, 1, 2, 3, 4, 5, 8, 10, 15, 20, 30, 50];
+
+/** Uma chave: ligada = P2P (só com servidor configurado), desligada = link direto. E o limite de pessoas. */
+function LinkOptions() {
     const t = useT();
     const nctx = useContext(NativeContext)!;
     const stream = nctx.config!.stream;
     const configured = p2pConfigured(nctx.config!);
     const set = (patch: Partial<typeof stream>) => nctx.updateConfig((c) => ({ ...c, stream: { ...c.stream, ...patch } }));
     return (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <label className={`flex items-center gap-2.5 select-none ${configured ? "cursor-pointer" : "cursor-not-allowed"}`} title={configured ? undefined : t("p2p.notConfigured")}>
                 <Toggle checked={configured && stream.p2pEnabled} disabled={!configured} onChange={(p2pEnabled) => set({ p2pEnabled })} />
                 {t("p2p.switch")}
             </label>
-            <label className="flex items-center gap-2.5 select-none cursor-pointer">
-                <Toggle checked={stream.directEnabled} onChange={(directEnabled) => set({ directEnabled })} />
-                {t("direct.switch")}
+            <label className="flex items-center gap-2.5 text-sm">
+                {t("viewers.limit")}
+                <Select
+                    width="w-32"
+                    value={String(stream.maxViewers)}
+                    options={VIEWER_LIMITS.map((n) => ({ value: String(n), label: n === 0 ? t("viewers.unlimited") : String(n) }))}
+                    onChange={(v) => set({ maxViewers: Number(v) })}
+                />
             </label>
         </div>
     );
@@ -175,7 +182,7 @@ export default function OutputDialog() {
     const plan = {
         startRecord: choice.record && !recordingOn,
         // Sem nenhum link ligado não há como assistir: não começa.
-        startStream: choice.stream && !live && (nctx.config.stream.directEnabled || (nctx.config.stream.p2pEnabled && p2pConfigured(nctx.config))),
+        startStream: choice.stream && !live,
         stopRecord: !choice.record && recordingOn,
         stopStream: !choice.stream && live,
         applyStream: choice.stream && live && nctx.streamDirty,
@@ -239,9 +246,8 @@ export default function OutputDialog() {
                         <Column
                             header={<OutputHeader label={t("settings.streaming")} running={live} badge={t("status.live")} badgeColor="var(--color-accent)" />}>
                             <>
-                                <LinkSwitches />
-                                {nctx.config.stream.p2pEnabled && <P2PLink />}
-                                {nctx.config.stream.directEnabled && <StreamLink />}
+                                <LinkOptions />
+                                {p2pActive(nctx.config) ? <P2PLink /> : <StreamLink />}
                                 <div className="pt-2">
                                     <StreamQualityPicker fullWidth />
                                 </div>

@@ -4,7 +4,7 @@ import { useContext, useEffect, useState } from "preact/hooks";
 import { NativeContext } from "../../context/NativeContext";
 import { newP2PKey, serverRole, setUsagePassword, type ServerRole } from "../../core/p2p/common";
 import { useT } from "../../i18n";
-import { Button, CopyField, NumberInput, Row, Section } from "./controls";
+import { Button, CopyField, Row, Section } from "./controls";
 
 type Check = { state: "empty" } | { state: "checking" } | { state: "offline" } | { state: "checked"; role: ServerRole; usageSet: boolean };
 
@@ -83,9 +83,6 @@ export default function P2PSettings() {
                     <Button onClick={() => set({ p2pKey: newP2PKey() })}>{t("p2p.newLink")}</Button>
                 </Row>
             )}
-            <Row label={t("p2p.maxViewers")} hint={t("p2p.maxViewersHint")}>
-                <NumberInput value={stream.p2pMaxViewers} min={1} max={30} onChange={(p2pMaxViewers) => set({ p2pMaxViewers })} />
-            </Row>
         </Section>
     );
 }

@@ -73,6 +73,8 @@ pub struct StreamHub {
     live: Mutex<Live>,
     viewers: Mutex<HashMap<IpAddr, Viewer>>,
     blocked: RwLock<HashSet<IpAddr>>,
+    /// Pessoas assistindo ao mesmo tempo; 0 = sem limite.
+    max_viewers: std::sync::atomic::AtomicUsize,
 }
 
 #[derive(Serialize)]
@@ -173,6 +175,22 @@ impl StreamHub {
         }
         viewers.insert(ip, Viewer { first_seen: now, last_seen: now });
         true
+    }
+
+    pub fn set_max_viewers(&self, max: u32) {
+        self.max_viewers.store(max as usize, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Alguém novo (que ainda não está assistindo) passaria do limite.
+    pub fn is_full_for(&self, ip: IpAddr) -> bool {
+        let max = self.max_viewers.load(std::sync::atomic::Ordering::Relaxed);
+        if max == 0 {
+            return false;
+        }
+        let now = Instant::now();
+        let viewers = self.viewers.lock().unwrap();
+        let active = viewers.values().filter(|v| now.duration_since(v.last_seen) < VIEWER_TIMEOUT).count();
+        !viewers.contains_key(&ip) && active >= max
     }
 
     pub fn viewers(&self) -> Vec<ViewerInfo> {

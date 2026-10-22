@@ -95,6 +95,7 @@ impl AppState {
 
         let hub = &self.stream.hub;
         hub.set_blocked(&config.stream.blocked_ips);
+        hub.set_max_viewers(config.stream.max_viewers);
         self.stream.apply(self.server_wanted(config), config.stream.port, config.stream.upnp).await;
     }
 

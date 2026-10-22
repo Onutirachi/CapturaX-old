@@ -402,6 +402,10 @@ async fn status(State(hub): State<Arc<StreamHub>>) -> Response<Body> {
 /// que sai do encoder, numa resposta que não termina. Quem ficar atrasado demais é desconectado
 /// (a página reconecta e volta para o ao vivo).
 async fn live_stream(State(hub): State<Arc<StreamHub>>, Extension(ClientIp(ip)): Extension<ClientIp>, Path(session): Path<u64>) -> Response<Body> {
+    // Limite de espectadores: a página mostra "cheio" com o 503.
+    if hub.is_full_for(ip) {
+        return respond(StatusCode::SERVICE_UNAVAILABLE, "text/plain", "Full", false);
+    }
     if !hub.touch_viewer(ip) {
         return blocked();
     }
