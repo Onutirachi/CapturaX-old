@@ -107,11 +107,11 @@ export function recordingSettings(config: RecordingConfig, source: SourceInfo): 
 
 // Bitrate automático da transmissão (kbps) por altura, a 30 e a 60 fps.
 const STREAM_BITRATES: [number, number, number][] = [
-    [480, 1500, 2500],
-    [720, 3000, 4500],
-    [1080, 5000, 8000],
-    [1440, 9000, 13000],
-    [2160, 16000, 24000],
+    [480, 2000, 3200],
+    [720, 4000, 6000],
+    [1080, 6500, 10000],
+    [1440, 11000, 16000],
+    [2160, 20000, 30000],
 ];
 
 /** Teto do automático (a partir daí, só no manual). */
@@ -120,7 +120,8 @@ const MAX_AUTO_STREAM_KBPS = 50_000;
 /**
  * Bitrate automático da transmissão para a resolução/FPS escolhidos. A tabela dá 30 e 60 fps; entre
  * eles interpola, e acima de 60 cresce um pouco menos que o FPS (quadros seguidos se parecem mais),
- * para cada quadro não ficar com menos bits: 1080p a 144 fps ≈ 16 Mbps.
+ * para cada quadro não ficar com menos bits: 1080p a 144 fps ≈ 20 Mbps. Medido: com menos que isso
+ * o encoder da GPU desmancha em blocos quando a câmera gira rápido.
  */
 export function autoStreamBitrateKbps(height: number, fps: number) {
     const [, at30, at60] = STREAM_BITRATES.find(([h]) => height <= h) ?? STREAM_BITRATES[STREAM_BITRATES.length - 1];
@@ -150,8 +151,10 @@ export function streamBitrateKbps(config: StreamConfig, source: SourceInfo) {
 
 export function streamSettings(config: StreamConfig, source: SourceInfo): EncoderSettings {
     const { width, height, fps } = streamSize(config, source);
-    // Transmissão sempre em H.264: é o que todo navegador toca.
-    return { codec: codecString("h264", width, height, fps), width, height, fps, bitrate: streamBitrateKbps(config, source) * 1000, keyframeSecs: 1 };
+    // Transmissão sempre em H.264: é o que todo navegador toca. Keyframe a cada 2 s: cada um custa
+    // caro, e com 1 s sobrava menos bit para os quadros de movimento (quem entra recebe as partes
+    // desde o último keyframe, então não espera por ele).
+    return { codec: codecString("h264", width, height, fps), width, height, fps, bitrate: streamBitrateKbps(config, source) * 1000, keyframeSecs: 2 };
 }
 
 /** Configuração completa do VideoEncoder para estas opções. */

@@ -22,6 +22,23 @@ type HostMessage =
 
 const MAX_RETRY_MS = 30_000;
 
+/**
+ * O WebRTC começa em ~300 kbps e sobe aos poucos: os primeiros segundos (e cada queda) saem
+ * borrados. `x-google-start-bitrate` faz começar perto do alvo; o mínimo evita desmanchar em
+ * blocos por uma oscilação curta da rede (se a rede não aguenta, a resolução cai antes).
+ */
+function withBitrateHints(sdp: string, bitrate: number) {
+    const kbps = Math.round(bitrate / 1000);
+    const start = Math.min(kbps, 8000);
+    const min = Math.min(Math.round(kbps / 4), 1500);
+    const hints = `x-google-start-bitrate=${start};x-google-min-bitrate=${min};x-google-max-bitrate=${kbps}`;
+    const payloads = new Set<string>();
+    for (const match of sdp.matchAll(/^a=rtpmap:(\d+) (H264|VP8|VP9|AV1)\/90000/gim)) payloads.add(match[1]);
+    return sdp.replace(/^a=fmtp:(\d+) (.*)$/gm, (line, payload: string, params: string) =>
+        payloads.has(payload) && !params.includes("x-google-start-bitrate") ? `a=fmtp:${payload} ${params};${hints}` : line
+    );
+}
+
 export class P2PHost {
     private ws: WebSocket | null = null;
     private peers = new Map<number, RTCPeerConnection>();
@@ -123,14 +140,15 @@ export class P2PHost {
         pc.onconnectionstatechange = () => {
             if (pc.connectionState === "failed" || pc.connectionState === "closed") this.removePeer(peer);
         };
-        await pc.setLocalDescription(await pc.createOffer());
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription({ type: "offer", sdp: withBitrateHints(offer.sdp ?? "", this.quality.bitrate) });
         this.send({ type: "signal", peer, data: { sdp: pc.localDescription!.toJSON() } });
     }
 
     private async signal(peer: number, data: SignalData) {
         const pc = this.peers.get(peer);
         if (!pc) return;
-        if (data.sdp) await pc.setRemoteDescription(data.sdp);
+        if (data.sdp) await pc.setRemoteDescription(data.sdp.type === "answer" ? { type: "answer", sdp: withBitrateHints(data.sdp.sdp ?? "", this.quality.bitrate) } : data.sdp);
         if (data.candidate) await pc.addIceCandidate(data.candidate).catch(() => {});
     }
 
