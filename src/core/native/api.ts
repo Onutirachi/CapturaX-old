@@ -56,6 +56,13 @@ export type StreamConfig = {
     bitrateKbps: number;
     audioBitrateKbps: number;
     blockedIps: string[];
+    /** Link P2P (WebRTC): quem assiste conecta direto, sem abrir porta. */
+    p2pEnabled: boolean;
+    /** Servidor de sinalização (`relay/`), ex.: `capturax.duckdns.org`. */
+    p2pServer: string;
+    /** Segredo deste app; a sala do link é `sha256(segredo)`. */
+    p2pKey: string;
+    p2pMaxViewers: number;
 };
 
 export type Config = {
@@ -112,6 +119,8 @@ export const native = {
     setPreviewVolume: (volume: number, muted: boolean) => invoke<void>("audio_set_preview_volume", { volume, muted }),
     audioApps: () => invoke<AppListEntry[]>("audio_apps"),
     systemLanguages: () => invoke<string[]>("system_languages"),
+    p2pAudioStart: () => invoke<void>("p2p_audio_start"),
+    p2pAudioStop: () => invoke<void>("p2p_audio_stop"),
     audioSetPairedInput: (id: string | null) => invoke<void>("audio_set_paired_input", { id }),
     audioSetOutputPairedInput: (id: string | null) => invoke<void>("audio_set_output_paired_input", { id }),
     videoModes: () => invoke<VideoDeviceModes[]>("video_modes"),

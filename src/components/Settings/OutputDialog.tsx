@@ -24,6 +24,26 @@ function loadChoice(): Choice {
     return { record: true, stream: false };
 }
 
+/** Link P2P: quem assiste conecta direto ao seu PC, sem abrir porta (a VPS só apresenta os dois). */
+function P2PLink() {
+    const t = useT();
+    const nctx = useContext(NativeContext)!;
+    if (!nctx.p2pLink) return null;
+    const live = nctx.streaming === "active";
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+                <span className="w-24 shrink-0 text-sm">{t("p2p.label")}</span>
+                <CopyField value={nctx.p2pLink} fullWidth />
+            </div>
+            <p className="text-sm text-(--text-muted)">
+                {t("p2p.hint", { max: nctx.config!.stream.p2pMaxViewers })}
+                {live && nctx.p2pState !== "online" && ` ${t("p2p.connecting")}`}
+            </p>
+        </div>
+    );
+}
+
 function StreamLink() {
     const t = useT();
     const server = useContext(NativeContext)!.server;
@@ -197,6 +217,7 @@ export default function OutputDialog() {
                         <Column
                             header={<OutputHeader label={t("settings.streaming")} running={live} badge={t("status.live")} badgeColor="var(--color-accent)" />}>
                             <>
+                                <P2PLink />
                                 <StreamLink />
                                 <div className="pt-2">
                                     <StreamQualityPicker fullWidth />

@@ -79,6 +79,11 @@ impl ScreenCapture {
         result
     }
 
+    /// Ponte com o WebView (também usada pelo áudio do P2P).
+    pub fn bridge(&self) -> Arc<Bridge> {
+        self.bridge.clone()
+    }
+
     /// Limite de quadros por segundo (vale na hora).
     pub fn set_fps(&self, fps: u32) {
         self.fps.store(fps.max(1), Ordering::Relaxed);

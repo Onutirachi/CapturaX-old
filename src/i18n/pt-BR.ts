@@ -314,4 +314,18 @@ export const ptBR: Messages = {
     "output.stopAll": "Parar as duas",
     "output.stopRecording": "Parar gravação",
     "output.stopStreaming": "Parar transmissão",
+
+    "p2p.label": "Sem abrir porta (P2P)",
+    "p2p.hint": "Quem assiste conecta direto a este PC, sem abrir porta; cada pessoa usa o bitrate inteiro da transmissão do seu upload (até {max} pessoas).",
+    "p2p.connecting": "Conectando ao servidor P2P…",
+    "p2p.title": "Link sem abrir porta (P2P)",
+    "p2p.description": "O vídeo vai direto deste PC para cada espectador (WebRTC). O servidor só apresenta os dois lados; nenhum vídeo passa por ele.",
+    "p2p.enabled": "Link P2P",
+    "p2p.enabledHint": "Funciona com CGNAT e sem UPnP. Algumas redes muito restritivas (algumas operadoras de celular) podem não conectar.",
+    "p2p.linkHint": "Sempre o mesmo. Gerar um novo faz o antigo parar de funcionar.",
+    "p2p.newLink": "Gerar outro",
+    "p2p.maxViewers": "Máximo de espectadores P2P",
+    "p2p.maxViewersHint": "Cada um usa o seu upload: 5 pessoas a 8 Mbps precisam de 40 Mbps.",
+    "p2p.server": "Servidor de sinalização",
+    "p2p.serverHint": "Endereço do servidor que apresenta os dois lados.",
 };

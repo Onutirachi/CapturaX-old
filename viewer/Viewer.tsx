@@ -3,6 +3,8 @@
 // iPhone), usa o HLS nativo, com mais atraso. Controles só afetam este navegador.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { LowLatencyPlayer } from "./player";
+import { P2PPlayer } from "./p2pPlayer";
+import { roomFromPath } from "../src/core/p2p/common";
 import AmbientLight from "../src/components/VideoStream/AmbientLight";
 import Icon from "../src/components/Overlay/Icon";
 import logoUrl from "../public/assets/Brand/logo.svg?url";
@@ -19,6 +21,8 @@ type LiveStatus = { live: boolean; session: string; codecs?: string };
 const OFFLINE: LiveStatus = { live: false, session: "" };
 
 const STATUS_MS = 2000;
+/** Link P2P (`/v/<sala>`, servido pela VPS): vídeo direto de quem transmite, sem o servidor do app. */
+const P2P_ROOM = roomFromPath(location.pathname);
 const IDLE_MS = 2500;
 
 function stored<T>(key: string, fallback: T): T {
@@ -49,8 +53,36 @@ export default function Viewer() {
     const [idle, setIdle] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // P2P: a sinalização avisa quando está ao vivo e o vídeo chega direto.
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!P2P_ROOM || !video) return;
+        const player = new P2PPlayer(location.host, P2P_ROOM, {
+            onPlaying: (stream) => {
+                video.srcObject = stream;
+                setStatus({ live: true, session: "p2p" });
+                video.play().catch(() => {
+                    video.muted = true;
+                    setNeedsClick(true);
+                    video.play().catch(() => {});
+                });
+            },
+            onOffline: () => {
+                video.srcObject = null;
+                setStatus(OFFLINE);
+            },
+            onFull: () => {
+                video.srcObject = null;
+                setStatus(OFFLINE);
+                setError(t("viewer.full"));
+            },
+        });
+        return () => player.destroy();
+    }, []);
+
     // Consulta se está ao vivo; a sessão muda a cada transmissão.
     useEffect(() => {
+        if (P2P_ROOM) return;
         let alive = true;
         const check = async () => {
             try {
@@ -74,7 +106,7 @@ export default function Viewer() {
     // Liga o player quando entra ao vivo (ou quando começa outra transmissão).
     useEffect(() => {
         const video = videoRef.current;
-        if (!video || !status?.live) return;
+        if (P2P_ROOM || !video || !status?.live) return;
         const base = `/live/${status.session}`;
 
         const play = () =>

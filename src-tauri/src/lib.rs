@@ -48,6 +48,8 @@ pub fn run() {
             commands::system_languages,
             commands::video_modes,
             commands::capture_sources,
+            commands::p2p_audio_start,
+            commands::p2p_audio_stop,
             commands::capture_start,
             commands::capture_set_fps,
             commands::capture_stop,

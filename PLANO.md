@@ -225,7 +225,14 @@ outro dispositivo. Áudio separado: o que você ouve × o que vai junto; o "Auto
 do aparelho do preview (o som do console vai junto ao transmitir a tela). Saída de áudio só nas
 configurações. Barra de baixo mostra fonte, resolução e FPS de cada saída.
 
-### Fase 10 — Assistir sem abrir porta (só estudo, não implementar ainda)
+### Fase 10 — Assistir sem abrir porta — **P2P feito** (2026-10-22)
+Escolhido o P2P (WebRTC, como o vdo.ninja): a VPS Oracle do usuário (`capturax.duckdns.org`) só
+hospeda a página e a sinalização (`relay/`); o vídeo vai direto do PC para cada espectador (STUN
+grátis, sem TURN). Testado de ponta a ponta na mesma máquina; falta testar de fora (4G). Se alguns
+espectadores não conectarem (NAT restritivo dos dois lados), adicionar coturn na VPS. Abaixo, o
+estudo original.
+
+### Fase 10 (estudo original)
 Hoje quem assiste pela internet precisa da porta aberta no roteador (UPnP ou manual) e não
 funciona atrás de CGNAT. Opções gratuitas levantadas em 2026-10-09, para entender antes de decidir:
 - **IPv6:** sem NAT, não precisa abrir porta no roteador (só o firewall). Quem assiste também

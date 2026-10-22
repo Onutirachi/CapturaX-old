@@ -12,7 +12,7 @@ declare class ImageCapture {
 
 declare class MediaStreamTrackGenerator extends MediaStreamTrack {
     constructor(init: { kind: "video" | "audio" });
-    readonly writable: WritableStream<VideoFrame>;
+    readonly writable: WritableStream<VideoFrame | AudioData>;
 }
 
 /** Ponte do WebView2 com o app (só existe dentro do app). */
@@ -32,4 +32,17 @@ interface Window {
             releaseBuffer?(buffer: ArrayBuffer): void;
         };
     };
+}
+
+/** Áudio cru do WebCodecs (para a trilha gerada do P2P). */
+declare class AudioData {
+    constructor(init: {
+        format: "u8" | "s16" | "s32" | "f32" | "u8-planar" | "s16-planar" | "s32-planar" | "f32-planar";
+        sampleRate: number;
+        numberOfChannels: number;
+        numberOfFrames: number;
+        timestamp: number;
+        data: BufferSource;
+    });
+    close(): void;
 }

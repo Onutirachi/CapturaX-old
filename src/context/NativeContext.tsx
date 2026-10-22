@@ -14,6 +14,9 @@ import { alerts, fileName } from "../core/utils/alerts";
 import { AlertsContext } from "./AlertsContext";
 import { VideoStreamContext } from "./VideoStreamContext";
 import { applyLanguageSetting, t } from "../i18n";
+import { P2PHost, type P2PState } from "../core/p2p/host";
+import { P2PAudio } from "../core/p2p/audio";
+import { newP2PKey, p2pLink, roomOf } from "../core/p2p/common";
 
 type Activity = "idle" | "starting" | "active" | "stopping";
 export type OutputKind = "record" | "stream";
@@ -48,6 +51,12 @@ export type NativeContextType = {
     stopRecording: () => Promise<void>;
     /** Ao vivo, mudou fonte, áudio ou qualidade desde que a transmissão começou ("Aplicar" reinicia). */
     streamDirty: boolean;
+    /** Link P2P (sem abrir porta), se ligado nas configurações. */
+    p2pLink: string | null;
+    /** Pessoas assistindo pelo P2P agora. */
+    p2pViewers: number;
+    /** Conexão com o servidor de sinalização (só enquanto transmite). */
+    p2pState: P2PState;
     /** Fonte da saída: a escolhida, ou o dispositivo do preview quando nada foi escolhido ainda. */
     outputSource: OutputSourceId;
     /** Entrada de áudio que o "Auto" do áudio gravado usa agora (null = nenhuma). */
@@ -100,6 +109,10 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
     const [captureSources, setCaptureSources] = useState<CaptureSources>({ screens: [], windows: [] });
     const [outputs, setOutputs] = useState<Record<OutputKind, OutputInfo | null>>({ record: null, stream: null });
     const [feedback, setFeedbackState] = useState(false);
+    const [p2pRoom, setP2PRoom] = useState<string | null>(null);
+    const [p2pViewers, setP2PViewers] = useState(0);
+    const [p2pState, setP2PState] = useState<P2PState>("offline");
+    const p2p = useRef<{ host: P2PHost; audio: P2PAudio } | null>(null);
     /** O que a transmissão em andamento usa (para saber se algo mudou e precisa "Aplicar"). */
     const [streamSnapshot, setStreamSnapshot] = useState<string | null>(null);
     const opened = useRef<Record<OutputKind, OpenOutput | null>>({ record: null, stream: null });
@@ -247,6 +260,13 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
         return () => window.clearInterval(interval);
     }, [watchServer]);
 
+    // P2P: segredo criado na primeira vez (o link fica fixo); a sala é derivada dele.
+    const p2pKey = config?.stream.p2pKey;
+    useEffect(() => {
+        if (config && !p2pKey) updateConfig((c) => ({ ...c, stream: { ...c.stream, p2pKey: newP2PKey() } }));
+        if (p2pKey) roomOf(p2pKey).then(setP2PRoom);
+    }, [p2pKey, !!config]);
+
     // Idioma: o escolhido nas configurações ou o do Windows.
     const language = config?.language;
     useEffect(() => {
@@ -330,6 +350,21 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
             streamer.current = new EncoderSession(id, settings, track, (message) => alert(alerts.error(t("native.streamError", { detail: message }))));
             describeOutput("stream", out, settings);
             setStreamSnapshot(streamKey(current, outputSourceRef.current));
+            const { p2pEnabled, p2pServer, p2pKey, p2pMaxViewers } = current.stream;
+            if (p2pEnabled && p2pServer && p2pKey) {
+                const audio = new P2PAudio();
+                await audio.start().catch((error) => console.error("P2P audio failed", error));
+                const host = new P2PHost(
+                    p2pServer,
+                    p2pKey,
+                    track,
+                    audio.track,
+                    { height: settings.height, sourceHeight: sourceInfo(track).height, fps: settings.fps, bitrate: settings.bitrate },
+                    p2pMaxViewers,
+                    { onViewers: setP2PViewers, onState: setP2PState }
+                );
+                p2p.current = { host, audio };
+            }
             setStreaming("active");
             alert(alerts.info(restarting ? t("native.streamUpdated", { size: `${settings.width}x${settings.height}`, fps: settings.fps }) : t("native.live")));
         } catch (error) {
@@ -339,7 +374,14 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
         }
     };
 
+    const stopP2P = () => {
+        p2p.current?.host.stop();
+        p2p.current?.audio.stop();
+        p2p.current = null;
+    };
+
     const stopStreaming = async () => {
+        stopP2P();
         setStreaming("stopping");
         try {
             await streamer.current?.stop();
@@ -393,6 +435,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
     /** Nova qualidade ao vivo: o formato do vídeo muda, então a transmissão recomeça (quem assiste
      * reconecta sozinho em 1–2 s). O servidor fica no ar durante a troca. */
     const restartStreaming = async () => {
+        stopP2P();
         setStreaming("starting");
         try {
             await native.streamPrepare();
@@ -470,6 +513,9 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
                 stopRecording,
                 streamDirty: streaming === "active" && !!config && streamSnapshot !== null && streamKey(config, outputSource) !== streamSnapshot,
                 outputSource,
+                p2pLink: config?.stream.p2pEnabled && config.stream.p2pServer && p2pRoom ? p2pLink(config.stream.p2pServer, p2pRoom) : null,
+                p2pViewers,
+                p2pState,
                 outputAutoAudioId: outputPaired === null ? (vsctx?.pairedAudioId ?? null) : outputPaired || null,
                 captureSources,
                 refreshCaptureSources,

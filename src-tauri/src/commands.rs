@@ -28,6 +28,8 @@ pub struct AppState {
     preparing: AtomicBool,
     /// Áudio do mesmo aparelho do vídeo do preview (o WebView informa), para o modo automático.
     paired_input: Mutex<Option<String>>,
+    /// Saída do mixer que manda o áudio ao WebView para o P2P (WebRTC).
+    p2p_audio: Mutex<Option<u64>>,
     /// Áudio do mesmo aparelho da fonte da gravação/transmissão (`None` = usa o do preview).
     output_paired_input: Mutex<Option<String>>,
 }
@@ -45,6 +47,7 @@ impl AppState {
             preparing: AtomicBool::new(false),
             paired_input: Mutex::new(None),
             output_paired_input: Mutex::new(None),
+            p2p_audio: Mutex::new(None),
         }
     }
 
@@ -297,6 +300,39 @@ pub async fn audio_set_output_paired_input(state: State<'_, AppState>, id: Optio
         state.apply(&config).await;
     }
     Ok(())
+}
+
+// ---- Áudio para o P2P ---------------------------------------------------------------------
+
+/// Começa a mandar a mistura (a mesma da gravação/transmissão) ao WebView, em blocos de 10 ms de
+/// PCM 16 bits estéreo 48 kHz (`{"capturax":"pcm","t":µs,"d":base64}`), para virar a trilha de
+/// áudio do WebRTC.
+#[tauri::command]
+pub fn p2p_audio_start(state: State<'_, AppState>, capture: State<'_, crate::capture::ScreenCapture>) {
+    use base64::Engine;
+    let mut current = state.p2p_audio.lock().unwrap();
+    if current.is_some() {
+        return;
+    }
+    let bridge = capture.bridge();
+    let mix = mix_settings(&state.config());
+    let id = state.audio.add_mix_output(
+        &mix,
+        Box::new(move |block: &crate::audio::PcmBlock| {
+            let pcm: Vec<u8> = block.samples.iter().flat_map(|s| ((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).collect();
+            let data = base64::engine::general_purpose::STANDARD.encode(pcm);
+            bridge.post(format!(r#"{{"capturax":"pcm","t":{},"d":"{data}"}}"#, block.pts_us));
+            true
+        }),
+    );
+    *current = Some(id);
+}
+
+#[tauri::command]
+pub fn p2p_audio_stop(state: State<'_, AppState>) {
+    if let Some(id) = state.p2p_audio.lock().unwrap().take() {
+        state.audio.remove_mix_output(id);
+    }
 }
 
 // ---- Captura de tela/janela ---------------------------------------------------------------

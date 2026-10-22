@@ -46,7 +46,7 @@ function MediaBubbles() {
     if (!nctx) return null;
     const recording = nctx.status?.sessions.find((s) => s.kind === "recording");
     const streaming = nctx.status?.sessions.find((s) => s.kind === "stream");
-    const viewers = nctx.server?.viewers.length ?? 0;
+    const viewers = (nctx.server?.viewers.length ?? 0) + nctx.p2pViewers;
     // "Tela 2 · 1920x1080 · 60 FPS"
     const describe = (kind: "record" | "stream") => {
         const output = nctx.outputs[kind];

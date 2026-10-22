@@ -314,6 +314,20 @@ export const en = {
     "output.stopAll": "Stop both",
     "output.stopRecording": "Stop recording",
     "output.stopStreaming": "Stop streaming",
+
+    "p2p.label": "No ports (P2P)",
+    "p2p.hint": "Viewers connect straight to this PC, no port opening needed; each one uses the full stream bitrate of your upload (up to {max} people).",
+    "p2p.connecting": "Connecting to the P2P server…",
+    "p2p.title": "Link without opening ports (P2P)",
+    "p2p.description": "The video goes straight from this PC to each viewer (WebRTC). The server only introduces the two sides; no video passes through it.",
+    "p2p.enabled": "P2P link",
+    "p2p.enabledHint": "Works behind CGNAT and without UPnP. Some very restrictive networks (some mobile carriers) may not connect.",
+    "p2p.linkHint": "Always the same. A new link makes the old one stop working.",
+    "p2p.newLink": "New link",
+    "p2p.maxViewers": "Max P2P viewers",
+    "p2p.maxViewersHint": "Each one uses your upload: 5 people at 8 Mbps need 40 Mbps.",
+    "p2p.server": "Signaling server",
+    "p2p.serverHint": "Address of the server that introduces the two sides.",
 } as const;
 
 export type MessageKey = keyof typeof en;

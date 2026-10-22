@@ -32,6 +32,7 @@ igd-next = { version = "0.16", features = ["aio_tokio"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tauri-plugin-dialog = "2"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+base64 = "0.22"
 
 
 [target.'cfg(windows)'.dependencies]

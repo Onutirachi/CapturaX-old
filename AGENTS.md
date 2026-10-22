@@ -92,6 +92,20 @@ streaming they can change and "Apply" restarts the stream (`streamDirty` compare
 stream started with). With a source other than the preview device, the top bar shows "View output". F10 records
 with the last choices. Settings → Audio keeps only what rarely changes.
 
+### P2P link (no port forwarding) — `src/core/p2p/`, `relay/`
+While streaming, if `stream.p2pEnabled`, the app also connects to the signaling server
+(`relay/`, deployed at `wss://capturax.duckdns.org/signal`, behind nginx + Let's Encrypt on the
+user's Oracle VPS) as **host** and opens one `RTCPeerConnection` per viewer (`P2PHost`): the output
+video track plus an audio track generated from the Rust mix (`p2p_audio_start` posts 10 ms PCM
+blocks through the WebView2 bridge → `P2PAudio` → `MediaStreamTrackGenerator`). Video and audio go
+straight to each viewer (STUN only, no TURN), so the host's upload is split per viewer
+(`stream.p2pMaxViewers`). The room is `sha256(stream.p2pKey)` (40 hex), so knowing the link doesn't
+let anyone impersonate the host. The viewer page (`viewer/`) is the same build as the embedded one;
+at `/v/<room>` it uses `viewer/p2pPlayer.ts` instead of the HTTP player. Deploy: build the viewer
+(`npm run build:viewer`) and copy `src-tauri/viewer-dist/` to `/var/www/capturax/`; build `relay/`
+on the VPS (`cargo build --release`) and install it as `/usr/local/bin/capturax-signal`
+(systemd `capturax-signal.service`, hardened, `127.0.0.1:8790`).
+
 ### Screen/window capture (`src-tauri/src/capture/`)
 Screens are named "Screen 2 - 27G2G4" from `\\.\DISPLAYn` + the DisplayConfig monitor name. Windows Graphics
 Capture runs in Rust (no yellow border, cursor on) and each BGRA frame is copied into WebView2
