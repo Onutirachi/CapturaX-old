@@ -12,9 +12,13 @@ export type P2PQuality = {
     bitrate: number;
 };
 
-export type P2PState = "connecting" | "online" | "offline";
+export type P2PState = "connecting" | "online" | "offline" | "unauthorized";
 
-type HostMessage = { type: "ready"; room: string } | { type: "join" | "leave"; peer: number } | { type: "signal"; peer: number; data: SignalData };
+type HostMessage =
+    | { type: "ready"; room: string; role: string }
+    | { type: "unauthorized" }
+    | { type: "join" | "leave"; peer: number }
+    | { type: "signal"; peer: number; data: SignalData };
 
 const MAX_RETRY_MS = 30_000;
 
@@ -27,6 +31,7 @@ export class P2PHost {
     constructor(
         private server: string,
         private key: string,
+        private password: string,
         private video: MediaStreamTrack,
         private audio: MediaStreamTrack | null,
         private quality: P2PQuality,
@@ -39,7 +44,7 @@ export class P2PHost {
     private connect() {
         if (this.closed) return;
         this.events.onState("connecting");
-        const ws = new WebSocket(`${signalUrl(this.server)}?role=host&key=${encodeURIComponent(this.key)}`);
+        const ws = new WebSocket(`${signalUrl(this.server)}?role=host&key=${encodeURIComponent(this.key)}&pass=${encodeURIComponent(this.password)}`);
         this.ws = ws;
         ws.onmessage = (event) => {
             try {
@@ -66,6 +71,12 @@ export class P2PHost {
             case "ready":
                 this.retry = 0;
                 this.events.onState("online");
+                break;
+            case "unauthorized":
+                // Senha errada ou trocada pelo dono do servidor: não adianta tentar de novo.
+                this.closed = true;
+                this.ws?.close();
+                this.events.onState("unauthorized");
                 break;
             case "join":
                 this.addPeer(message.peer).catch((error) => console.error("P2P peer failed", error));

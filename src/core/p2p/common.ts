@@ -24,5 +24,22 @@ export function roomFromPath(path: string) {
     return path.match(/^\/v\/([0-9a-f]{40})\/?$/)?.[1] ?? null;
 }
 
+export type ServerRole = "admin" | "usage" | null;
+
+async function api<T>(server: string, path: string, body: object): Promise<T> {
+    const response = await fetch(`https://${server}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok && response.status !== 401) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<T>;
+}
+
+/** Que senha é esta nesse servidor (admin, uso ou nenhuma). Lança se o servidor não responder. */
+export const serverRole = (server: string, password: string) => api<{ role: ServerRole; usageSet: boolean }>(server, "/api/role", { password });
+
+/** Troca a senha de uso (só com a de admin). Vazia = só o admin transmite. */
+export async function setUsagePassword(server: string, admin: string, password: string) {
+    const result = await api<{ ok?: boolean; error?: string }>(server, "/api/usage-password", { admin, password });
+    if (!result.ok) throw new Error(result.error ?? "failed");
+}
+
 /** Mensagens trocadas pela sinalização (ver `relay/src/main.rs`). */
 export type SignalData = { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };

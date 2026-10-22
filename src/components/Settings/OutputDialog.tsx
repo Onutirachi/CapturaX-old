@@ -3,7 +3,7 @@
 // (inclusive os checkboxes) fica salvo, mesmo fechando sem começar.
 import { type ComponentChildren } from "preact";
 import { useContext, useEffect, useState } from "preact/hooks";
-import { NativeContext } from "../../context/NativeContext";
+import { NativeContext, p2pConfigured } from "../../context/NativeContext";
 import Icon from "../Overlay/Icon";
 import { errorText, useT } from "../../i18n";
 import { Button, CopyField, Toggle } from "./controls";
@@ -40,6 +40,27 @@ function P2PLink() {
                 {t("p2p.hint", { max: nctx.config!.stream.p2pMaxViewers })}
                 {live && nctx.p2pState !== "online" && ` ${t("p2p.connecting")}`}
             </p>
+        </div>
+    );
+}
+
+/** P2P e link direto, ligados/desligados aqui (o P2P só com servidor configurado). */
+function LinkSwitches() {
+    const t = useT();
+    const nctx = useContext(NativeContext)!;
+    const stream = nctx.config!.stream;
+    const configured = p2pConfigured(nctx.config!);
+    const set = (patch: Partial<typeof stream>) => nctx.updateConfig((c) => ({ ...c, stream: { ...c.stream, ...patch } }));
+    return (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <label className={`flex items-center gap-2.5 select-none ${configured ? "cursor-pointer" : "cursor-not-allowed"}`} title={configured ? undefined : t("p2p.notConfigured")}>
+                <Toggle checked={configured && stream.p2pEnabled} disabled={!configured} onChange={(p2pEnabled) => set({ p2pEnabled })} />
+                {t("p2p.switch")}
+            </label>
+            <label className="flex items-center gap-2.5 select-none cursor-pointer">
+                <Toggle checked={stream.directEnabled} onChange={(directEnabled) => set({ directEnabled })} />
+                {t("direct.switch")}
+            </label>
         </div>
     );
 }
@@ -153,7 +174,8 @@ export default function OutputDialog() {
     // O botão do rodapé faz o que os switches mostram.
     const plan = {
         startRecord: choice.record && !recordingOn,
-        startStream: choice.stream && !live,
+        // Sem nenhum link ligado não há como assistir: não começa.
+        startStream: choice.stream && !live && (nctx.config.stream.directEnabled || (nctx.config.stream.p2pEnabled && p2pConfigured(nctx.config))),
         stopRecord: !choice.record && recordingOn,
         stopStream: !choice.stream && live,
         applyStream: choice.stream && live && nctx.streamDirty,
@@ -217,8 +239,9 @@ export default function OutputDialog() {
                         <Column
                             header={<OutputHeader label={t("settings.streaming")} running={live} badge={t("status.live")} badgeColor="var(--color-accent)" />}>
                             <>
-                                <P2PLink />
-                                <StreamLink />
+                                <LinkSwitches />
+                                {nctx.config.stream.p2pEnabled && <P2PLink />}
+                                {nctx.config.stream.directEnabled && <StreamLink />}
                                 <div className="pt-2">
                                     <StreamQualityPicker fullWidth />
                                 </div>

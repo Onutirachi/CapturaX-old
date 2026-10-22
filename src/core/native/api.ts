@@ -56,10 +56,14 @@ export type StreamConfig = {
     bitrateKbps: number;
     audioBitrateKbps: number;
     blockedIps: string[];
+    /** Link direto (servido por este PC). Desligado, nem codifica para ele. */
+    directEnabled: boolean;
     /** Link P2P (WebRTC): quem assiste conecta direto, sem abrir porta. */
     p2pEnabled: boolean;
-    /** Servidor de sinalização (`relay/`), ex.: `capturax.duckdns.org`. */
+    /** Servidor de sinalização (`relay/`), ex.: `meucapturax.duckdns.org`. Vazio = sem P2P. */
     p2pServer: string;
+    /** Senha de uso ou de admin desse servidor. */
+    p2pPassword: string;
     /** Segredo deste app; a sala do link é `sha256(segredo)`. */
     p2pKey: string;
     p2pMaxViewers: number;

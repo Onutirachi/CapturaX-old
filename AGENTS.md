@@ -93,18 +93,23 @@ stream started with). With a source other than the preview device, the top bar s
 with the last choices. Settings → Audio keeps only what rarely changes.
 
 ### P2P link (no port forwarding) — `src/core/p2p/`, `relay/`
-While streaming, if `stream.p2pEnabled`, the app also connects to the signaling server
-(`relay/`, deployed at `wss://capturax.duckdns.org/signal`, behind nginx + Let's Encrypt on the
-user's Oracle VPS) as **host** and opens one `RTCPeerConnection` per viewer (`P2PHost`): the output
-video track plus an audio track generated from the Rust mix (`p2p_audio_start` posts 10 ms PCM
-blocks through the WebView2 bridge → `P2PAudio` → `MediaStreamTrackGenerator`). Video and audio go
-straight to each viewer (STUN only, no TURN), so the host's upload is split per viewer
-(`stream.p2pMaxViewers`). The room is `sha256(stream.p2pKey)` (40 hex), so knowing the link doesn't
-let anyone impersonate the host. The viewer page (`viewer/`) is the same build as the embedded one;
-at `/v/<room>` it uses `viewer/p2pPlayer.ts` instead of the HTTP player. Deploy: build the viewer
-(`npm run build:viewer`) and copy `src-tauri/viewer-dist/` to `/var/www/capturax/`; build `relay/`
-on the VPS (`cargo build --release`) and install it as `/usr/local/bin/capturax-signal`
-(systemd `capturax-signal.service`, hardened, `127.0.0.1:8790`).
+The Streaming column of the Record / Stream window has two switches: **P2P** and **Direct link**
+(the HTTP link served by this PC). With Direct link off the Rust stream session and its encoder
+aren't started at all. P2P needs a signaling server configured in Settings → Streaming
+(`stream.p2pServer` + `stream.p2pPassword`); the app ships without one (open source: each owner
+runs their own, see `relay/README.md`), and without it the P2P switch is locked with a tooltip.
+While streaming, `P2PHost` connects to `wss://<server>/signal` as host (with the password) and opens
+one `RTCPeerConnection` per viewer: the output video track plus an audio track generated from the
+Rust mix (`p2p_audio_start` posts 10 ms PCM blocks through the WebView2 bridge → `P2PAudio` →
+`MediaStreamTrackGenerator`). Media goes straight to each viewer (STUN only, no TURN), so upload is
+split per viewer (`stream.p2pMaxViewers`). The room is `sha256(stream.p2pKey)`.
+Server passwords (`relay/src/passwords.rs`, salted hashes in the data volume): **admin** (the owner;
+streams and changes the usage password through `/api/usage-password`, shown in the app when the
+saved password is the admin one) and **usage** (given to friends; changing it disconnects whoever
+used the old one). Viewers need no password. `capturax-signal reset-admin` prints a new admin
+password. The relay image (`relay/Dockerfile`, context = repo root) also serves the viewer page
+(`/v/<room>` → `viewer/p2pPlayer.ts`). Deploy: `relay/deploy/` (shared Caddy proxy for HTTPS +
+the CapturaX compose); on the owner's VPS it lives in `/opt/proxy` and `/opt/capturax`.
 
 ### Screen/window capture (`src-tauri/src/capture/`)
 Screens are named "Screen 2 - 27G2G4" from `\\.\DISPLAYn` + the DisplayConfig monitor name. Windows Graphics

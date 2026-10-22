@@ -3,7 +3,7 @@ import { NativeContext } from "../../context/NativeContext";
 import { native, errorText, type StreamConfig, type UpnpStatus } from "../../core/native/api";
 import { Badge, Button, CopyField, Note, NumberInput, Row, Section, Toggle } from "./controls";
 import { t as translate, tx, useT } from "../../i18n";
-import { newP2PKey } from "../../core/p2p/common";
+import P2PSettings from "./P2PSettings";
 
 function formatWatching(seconds: number) {
     if (seconds < 60) return translate("time.seconds", { n: seconds });
@@ -83,31 +83,7 @@ export default function StreamingTab() {
                 )}
             </Section>
 
-            <Section title={t("p2p.title")} description={t("p2p.description")}>
-                <Row label={t("p2p.enabled")} hint={t("p2p.enabledHint")}>
-                    <Toggle checked={stream.p2pEnabled} onChange={(p2pEnabled) => set({ p2pEnabled })} />
-                </Row>
-                {stream.p2pEnabled && (
-                    <>
-                        {nctx.p2pLink && (
-                            <Row label={t("p2p.label")} hint={t("p2p.linkHint")}>
-                                <CopyField value={nctx.p2pLink} />
-                                <Button onClick={() => set({ p2pKey: newP2PKey() })}>{t("p2p.newLink")}</Button>
-                            </Row>
-                        )}
-                        <Row label={t("p2p.maxViewers")} hint={t("p2p.maxViewersHint")}>
-                            <NumberInput value={stream.p2pMaxViewers} min={1} max={30} onChange={(p2pMaxViewers) => set({ p2pMaxViewers })} />
-                        </Row>
-                        <Row label={t("p2p.server")} hint={t("p2p.serverHint")}>
-                            <input
-                                value={stream.p2pServer}
-                                onChange={(e) => set({ p2pServer: e.currentTarget.value.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "") })}
-                                className="w-64 h-9 px-3 rounded-lg bg-dark [border:var(--border)] outline-none focus:border-accent"
-                            />
-                        </Row>
-                    </>
-                )}
-            </Section>
+            <P2PSettings />
 
             <Section title={t("streaming.network")}>
                 <Row label={t("streaming.port")} hint={t("streaming.portHint")}>

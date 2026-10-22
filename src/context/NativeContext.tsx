@@ -80,9 +80,13 @@ export type NativeContextType = {
 /** O que, se mudar ao vivo, só vale reiniciando a transmissão: fonte, dispositivos de áudio e qualidade. */
 function streamKey(config: Config, source: OutputSourceId) {
     const { recordInput, recordInputEnabled, recordMic, recordSystem } = config.audio;
-    const { width, height, fps, bitrateAuto, bitrateKbps } = config.stream;
-    return JSON.stringify([source, recordInput, recordInputEnabled, recordMic, recordSystem, width, height, fps, bitrateAuto, bitrateKbps]);
+    const { width, height, fps, bitrateAuto, bitrateKbps, directEnabled, p2pEnabled, p2pServer, p2pPassword } = config.stream;
+    return JSON.stringify([source, recordInput, recordInputEnabled, recordMic, recordSystem, width, height, fps, bitrateAuto, bitrateKbps, directEnabled, p2pEnabled, p2pServer, p2pPassword]);
 }
+
+/** P2P configurado (servidor + senha) e ligado. */
+export const p2pConfigured = (config: Config) => !!config.stream.p2pServer && !!config.stream.p2pPassword;
+const p2pActive = (config: Config) => config.stream.p2pEnabled && p2pConfigured(config) && !!config.stream.p2pKey;
 
 export const NativeContext = createContext<NativeContextType | null>(null);
 
@@ -345,23 +349,34 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
             }
             const track = out.track;
             const settings = await resolveSupported(streamSettings(current.stream, sourceInfo(track)));
-            await calibrateClock();
-            const id = await native.streamStart();
-            streamer.current = new EncoderSession(id, settings, track, (message) => alert(alerts.error(t("native.streamError", { detail: message }))));
+            const { directEnabled, p2pServer, p2pPassword, p2pKey, p2pMaxViewers } = current.stream;
+            const p2pOn = p2pActive(current);
+            // Link direto: codifica e serve por este PC. Desligado, nem liga o encoder (a GPU só faz o P2P).
+            if (directEnabled || !p2pOn) {
+                await calibrateClock();
+                const id = await native.streamStart();
+                streamer.current = new EncoderSession(id, settings, track, (message) => alert(alerts.error(t("native.streamError", { detail: message }))));
+            }
             describeOutput("stream", out, settings);
             setStreamSnapshot(streamKey(current, outputSourceRef.current));
-            const { p2pEnabled, p2pServer, p2pKey, p2pMaxViewers } = current.stream;
-            if (p2pEnabled && p2pServer && p2pKey) {
+            if (p2pOn) {
                 const audio = new P2PAudio();
                 await audio.start().catch((error) => console.error("P2P audio failed", error));
                 const host = new P2PHost(
                     p2pServer,
                     p2pKey,
+                    p2pPassword,
                     track,
                     audio.track,
                     { height: settings.height, sourceHeight: sourceInfo(track).height, fps: settings.fps, bitrate: settings.bitrate },
                     p2pMaxViewers,
-                    { onViewers: setP2PViewers, onState: setP2PState }
+                    {
+                        onViewers: setP2PViewers,
+                        onState: (state) => {
+                            setP2PState(state);
+                            if (state === "unauthorized") alert(alerts.error(t("p2p.unauthorized")));
+                        },
+                    }
                 );
                 p2p.current = { host, audio };
             }
@@ -416,7 +431,8 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
         refreshCaptureSources();
         setOutputDialogOpen(true);
         // Liga o servidor já, para o link (e a porta no roteador) estar pronto na janela.
-        if (streaming !== "active") native.streamPrepare().catch(() => {});
+        // Liga o servidor do link direto já, para o link (e a porta no roteador) estar pronto na janela.
+        if (streaming !== "active" && configRef.current?.stream.directEnabled) native.streamPrepare().catch(() => {});
     };
     const closeOutputDialog = () => {
         setOutputDialogOpen(false);
@@ -513,7 +529,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
                 stopRecording,
                 streamDirty: streaming === "active" && !!config && streamSnapshot !== null && streamKey(config, outputSource) !== streamSnapshot,
                 outputSource,
-                p2pLink: config?.stream.p2pEnabled && config.stream.p2pServer && p2pRoom ? p2pLink(config.stream.p2pServer, p2pRoom) : null,
+                p2pLink: config && p2pConfigured(config) && p2pRoom ? p2pLink(config.stream.p2pServer, p2pRoom) : null,
                 p2pViewers,
                 p2pState,
                 outputAutoAudioId: outputPaired === null ? (vsctx?.pairedAudioId ?? null) : outputPaired || null,

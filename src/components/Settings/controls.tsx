@@ -152,7 +152,7 @@ export function CopyField({ value, fullWidth = false }: { value: string; fullWid
     const [copied, setCopied] = useState(false);
     return (
         <div className={`flex items-center gap-2 min-w-0 ${fullWidth ? "w-full" : ""}`}>
-            <code className={`px-2 h-9 flex items-center rounded-lg bg-dark [border:var(--border)] text-sm select-all min-w-0 truncate ${fullWidth ? "flex-1" : ""}`}>
+            <code className={`px-2 h-9 flex items-center rounded-lg bg-dark [border:var(--border)] text-sm select-all min-w-0 truncate ${fullWidth ? "flex-1" : "max-w-72"}`}>
                 {value}
             </code>
             <button
