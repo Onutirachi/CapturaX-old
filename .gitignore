@@ -30,3 +30,6 @@ relay/target/
 # Configurações locais do relay (senhas, tokens)
 relay/deploy/.env
 relay/deploy/proxy/sites/*.caddy
+
+# saida do build.cmd
+release/
