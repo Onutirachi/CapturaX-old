@@ -26,3 +26,7 @@ dist-ssr
 
 # Servidor de sinalização (relay/)
 relay/target/
+
+# Configurações locais do relay (senhas, tokens)
+relay/deploy/.env
+relay/deploy/proxy/sites/*.caddy

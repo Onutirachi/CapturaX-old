@@ -1,0 +1,11 @@
+# Copie para capturax.caddy e troque o domínio.
+seu-dominio.duckdns.org {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	reverse_proxy capturax-signal:8790
+}

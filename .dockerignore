@@ -1,0 +1,9 @@
+# Só o necessário para a imagem do relay (relay/Dockerfile)
+.git
+node_modules
+dist
+src-tauri/target
+src-tauri/viewer-dist
+relay/target
+relay/deploy
+**/*.log

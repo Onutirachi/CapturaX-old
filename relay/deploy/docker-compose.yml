@@ -1,0 +1,54 @@
+# Servidor P2P do CapturaX (sinalização + página de quem assiste). Nenhum vídeo passa por aqui.
+# Precisa do proxy (relay/deploy/proxy) rodando: é ele que faz o HTTPS e entrega o tráfego.
+#
+#   cp .env.example .env        # e preencha
+#   docker compose up -d --build
+#   docker compose logs capturax-signal     # mostra a senha de admin na primeira vez
+#   docker compose exec capturax-signal capturax-signal reset-admin   # senha de admin nova
+#
+# Com DuckDNS: docker compose --profile duckdns up -d --build
+name: capturax
+
+services:
+  capturax-signal:
+    build:
+      context: ../..
+      dockerfile: relay/Dockerfile
+    image: capturax-signal
+    restart: unless-stopped
+    environment:
+      # Opcional: senha de admin inicial (senão, uma aleatória aparece no log na primeira vez).
+      CAPTURAX_ADMIN_PASSWORD: ${CAPTURAX_ADMIN_PASSWORD:-}
+    volumes:
+      - data:/data
+    networks:
+      - proxy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+
+  # Mantém o domínio DuckDNS apontando para esta máquina (opcional: --profile duckdns).
+  duckdns:
+    image: alpine:3
+    profiles: [duckdns]
+    restart: unless-stopped
+    environment:
+      DUCKDNS_DOMAIN: ${DUCKDNS_DOMAIN:-}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:-}
+    command: >
+      sh -c 'while true; do
+        wget -qO- "https://www.duckdns.org/update?domains=$${DUCKDNS_DOMAIN}&token=$${DUCKDNS_TOKEN}&ip=" && echo " (duckdns)";
+        sleep 300;
+      done'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 32m
+
+volumes:
+  data:
+
+networks:
+  proxy:
+    external: true

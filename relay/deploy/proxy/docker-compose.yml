@@ -1,0 +1,30 @@
+# Proxy compartilhado (Caddy): único dono das portas 80/443, faz o HTTPS (Let's Encrypt) de todos
+# os projetos da máquina. Cada projeto põe um arquivo em sites/ e entra na rede "proxy".
+#
+#   docker compose up -d
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile   # depois de mudar sites/
+name: proxy
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - proxy
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  proxy:
+    name: proxy

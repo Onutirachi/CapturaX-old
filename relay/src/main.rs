@@ -4,16 +4,25 @@
 //! "viewer") trocam por aqui ofertas/respostas SDP e candidatos ICE, alguns KB por pessoa. O vídeo
 //! vai direto entre eles (P2P); nada de mídia passa por este servidor.
 //!
-//! - Host: `GET /signal?role=host&key=<segredo>`. A sala é `sha256(segredo)` (40 hex), então quem só
-//!   conhece o link (que tem a sala) não consegue se passar pelo host.
+//! - Host: `GET /signal?role=host&key=<segredo>&pass=<senha>`. A sala é `sha256(segredo)` (40 hex),
+//!   então quem só conhece o link (que tem a sala) não consegue se passar pelo host. A senha é a de
+//!   uso ou a de admin do servidor (`passwords.rs`): só transmite por aqui quem o dono deixou.
 //! - Viewer: `GET /signal?role=viewer&room=<sala>`. Se o host não está, espera; quando ele entra,
 //!   recebe o aviso e a conexão começa.
 //!
 //! Mensagens (JSON):
-//! - para o host: `ready {room}`, `join {peer}`, `leave {peer}`, `signal {peer, data}`
+//! - para o host: `ready {room, role}`, `unauthorized`, `join {peer}`, `leave {peer}`, `signal {peer, data}`
 //! - do host: `signal {peer, data}`, `kick {peer}`
 //! - para o viewer: `waiting`, `live`, `ended`, `signal {data}`, `kicked`
 //! - do viewer: `signal {data}`
+//!
+//! API (JSON, para o CapturaX): `POST /api/role {password}` → `{role: "admin"|"usage"|null}`;
+//! `POST /api/usage-password {admin, password}` troca a senha de uso (vazia = só o admin).
+//! O resto do site é a página de quem assiste (`CAPTURAX_SITE`).
+//!
+//! `capturax-signal reset-admin` gera uma senha de admin nova (perdeu a antiga).
+
+mod passwords;
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -23,15 +32,17 @@ use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::Router;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
+use passwords::{Passwords, Role};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
+use tower_http::services::{ServeDir, ServeFile};
 
 /// Mensagem maior que isso é recusada (um SDP tem poucos KB).
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
@@ -43,6 +54,8 @@ const VIEWER_MESSAGES_PER_SEC: u32 = 60;
 const PING_EVERY: Duration = Duration::from_secs(20);
 /// Fila de saída de cada conexão; se encher (cliente parado), ela é derrubada.
 const OUTBOX: usize = 256;
+/// Senhas erradas por IP por minuto (depois disso, espera).
+const MAX_FAILURES_PER_MINUTE: u32 = 10;
 
 type Outbox = mpsc::Sender<Utf8Bytes>;
 
@@ -53,11 +66,45 @@ struct Room {
     viewers: HashMap<u64, Outbox>,
 }
 
-#[derive(Default)]
 struct Hub {
     rooms: Mutex<HashMap<String, Room>>,
     per_ip: Mutex<HashMap<IpAddr, usize>>,
     next_id: AtomicU64,
+    passwords: Passwords,
+    /// Muda quando a senha de uso muda: quem transmite com ela é desconectado.
+    usage_generation: watch::Sender<u64>,
+    failures: Mutex<HashMap<IpAddr, (Instant, u32)>>,
+}
+
+impl Hub {
+    /// IP que errou a senha muitas vezes no último minuto.
+    fn locked_out(&self, ip: IpAddr) -> bool {
+        let failures = self.failures.lock().unwrap();
+        failures.get(&ip).is_some_and(|(since, count)| since.elapsed() < Duration::from_secs(60) && *count >= MAX_FAILURES_PER_MINUTE)
+    }
+
+    fn failed(&self, ip: IpAddr) {
+        let mut failures = self.failures.lock().unwrap();
+        let entry = failures.entry(ip).or_insert((Instant::now(), 0));
+        if entry.0.elapsed() >= Duration::from_secs(60) {
+            *entry = (Instant::now(), 0);
+        }
+        entry.1 += 1;
+    }
+
+    /// Confere a senha fora do executor (o hash é propositalmente lento).
+    async fn role(self: &Arc<Self>, ip: IpAddr, password: String) -> Option<Role> {
+        if self.locked_out(ip) {
+            return None;
+        }
+        let hub = self.clone();
+        let role = tokio::task::spawn_blocking(move || hub.passwords.role(&password)).await.ok().flatten();
+        if role.is_none() {
+            self.failed(ip);
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        role
+    }
 }
 
 #[derive(Deserialize)]
@@ -65,6 +112,7 @@ struct Params {
     role: String,
     key: Option<String>,
     room: Option<String>,
+    pass: Option<String>,
 }
 
 /// Sala de um segredo: 40 caracteres hex do SHA-256 (curto para o link, longo para não adivinhar).
@@ -128,7 +176,10 @@ async fn signal(
     let slot = IpSlot { hub: hub.clone(), ip };
     let ws = ws.max_message_size(MAX_MESSAGE_BYTES).max_frame_size(MAX_MESSAGE_BYTES);
     match (params.role.as_str(), params.key, params.room) {
-        ("host", Some(key), _) if (16..=256).contains(&key.len()) => ws.on_upgrade(move |socket| host(socket, hub, room_of(&key), slot)),
+        ("host", Some(key), _) if (16..=256).contains(&key.len()) => {
+            let role = hub.role(ip, params.pass.unwrap_or_default()).await;
+            ws.on_upgrade(move |socket| host(socket, hub, room_of(&key), role, slot))
+        }
         ("viewer", _, Some(room)) if valid_room(&room) => ws.on_upgrade(move |socket| viewer(socket, hub, room, slot)),
         _ => (StatusCode::BAD_REQUEST, "bad request").into_response(),
     }
@@ -164,9 +215,17 @@ async fn next_json(stream: &mut futures_util::stream::SplitStream<WebSocket>) ->
     }
 }
 
-async fn host(socket: WebSocket, hub: Arc<Hub>, room: String, _slot: IpSlot) {
+async fn host(socket: WebSocket, hub: Arc<Hub>, room: String, role: Option<Role>, _slot: IpSlot) {
     let id = hub.next_id.fetch_add(1, Ordering::Relaxed);
     let (outbox, mut stream, writer) = split(socket);
+    let Some(role) = role else {
+        // Avisa pelo próprio WebSocket (o navegador não lê o status HTTP da recusa).
+        let _ = outbox.send(text(json!({ "type": "unauthorized" }))).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        writer.abort();
+        return;
+    };
+    let mut usage_changes = hub.usage_generation.subscribe();
     let waiting: Vec<(u64, Outbox)> = {
         let mut rooms = hub.rooms.lock().unwrap();
         if !rooms.contains_key(&room) && rooms.len() >= MAX_ROOMS {
@@ -177,13 +236,23 @@ async fn host(socket: WebSocket, hub: Arc<Hub>, room: String, _slot: IpSlot) {
         entry.host = Some((id, outbox.clone()));
         entry.viewers.iter().map(|(peer, outbox)| (*peer, outbox.clone())).collect()
     };
-    let _ = outbox.try_send(text(json!({ "type": "ready", "room": room })));
+    let _ = outbox.try_send(text(json!({ "type": "ready", "room": room, "role": role.name() })));
     for (peer, viewer) in waiting {
         let _ = viewer.try_send(text(json!({ "type": "live" })));
         let _ = outbox.try_send(text(json!({ "type": "join", "peer": peer })));
     }
 
-    while let Some(message) = next_json(&mut stream).await {
+    loop {
+        let message = tokio::select! {
+            message = next_json(&mut stream) => message,
+            // Senha de uso trocada: quem entrou com a antiga sai.
+            Ok(()) = usage_changes.changed(), if role == Role::Usage => {
+                let _ = outbox.send(text(json!({ "type": "unauthorized" }))).await;
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                None
+            }
+        };
+        let Some(message) = message else { break };
         let Some(message) = message else { continue };
         let peer = message.get("peer").and_then(Value::as_u64);
         let target = peer.and_then(|peer| hub.rooms.lock().unwrap().get(&room).and_then(|r| r.viewers.get(&peer).cloned()));
@@ -289,6 +358,63 @@ async fn viewer(socket: WebSocket, hub: Arc<Hub>, room: String, _slot: IpSlot) {
     writer.abort();
 }
 
+#[derive(Deserialize)]
+struct RoleRequest {
+    password: String,
+}
+
+/// Que senha é esta? O CapturaX usa para validar e para mostrar o campo de admin.
+async fn api_role(State(hub): State<Arc<Hub>>, headers: HeaderMap, ConnectInfo(peer): ConnectInfo<SocketAddr>, Json(request): Json<RoleRequest>) -> Response {
+    let ip = client_ip(&headers, peer);
+    if hub.locked_out(ip) {
+        return cors((StatusCode::TOO_MANY_REQUESTS, Json(json!({ "error": "too_many_attempts" }))).into_response());
+    }
+    let role = hub.role(ip, request.password).await;
+    cors(Json(json!({ "role": role.map(Role::name), "usageSet": hub.passwords.usage_is_set() })).into_response())
+}
+
+#[derive(Deserialize)]
+struct UsageRequest {
+    admin: String,
+    password: String,
+}
+
+/// Troca a senha de uso (só com a de admin). Corta quem transmite com a antiga.
+async fn api_usage_password(State(hub): State<Arc<Hub>>, headers: HeaderMap, ConnectInfo(peer): ConnectInfo<SocketAddr>, Json(request): Json<UsageRequest>) -> Response {
+    let ip = client_ip(&headers, peer);
+    if hub.role(ip, request.admin).await != Some(Role::Admin) {
+        return cors((StatusCode::UNAUTHORIZED, Json(json!({ "error": "not_admin" }))).into_response());
+    }
+    if request.password.len() > 200 {
+        return cors((StatusCode::BAD_REQUEST, Json(json!({ "error": "too_long" }))).into_response());
+    }
+    let saved = {
+        let hub = hub.clone();
+        tokio::task::spawn_blocking(move || hub.passwords.set_usage(&request.password)).await
+    };
+    match saved {
+        Ok(Ok(())) => {
+            hub.usage_generation.send_modify(|generation| *generation += 1);
+            cors(Json(json!({ "ok": true })).into_response())
+        }
+        _ => cors((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "save_failed" }))).into_response()),
+    }
+}
+
+/// A API é chamada pelo app (outra origem): libera CORS. A segurança é a senha, não a origem.
+fn cors(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("POST, OPTIONS"));
+    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("content-type"));
+    headers.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+    response
+}
+
+async fn preflight(method: Method) -> Response {
+    cors(if method == Method::OPTIONS { StatusCode::NO_CONTENT.into_response() } else { StatusCode::METHOD_NOT_ALLOWED.into_response() })
+}
+
 async fn health(State(hub): State<Arc<Hub>>) -> String {
     let rooms = hub.rooms.lock().unwrap();
     let live = rooms.values().filter(|r| r.host.is_some()).count();
@@ -298,9 +424,54 @@ async fn health(State(hub): State<Arc<Hub>>) -> String {
 
 #[tokio::main]
 async fn main() {
+    let data_dir = std::path::PathBuf::from(std::env::var("CAPTURAX_DATA").unwrap_or_else(|_| "/data".into()));
+    let passwords = Passwords::new(&data_dir);
+
+    // `capturax-signal reset-admin`: senha de admin nova, mostrada no terminal.
+    if std::env::args().nth(1).as_deref() == Some("reset-admin") {
+        match passwords.reset_admin() {
+            Ok(password) => println!("Nova senha de admin / new admin password: {password}"),
+            Err(error) => {
+                eprintln!("Could not save the password: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    match passwords.ensure_admin(std::env::var("CAPTURAX_ADMIN_PASSWORD").ok()) {
+        Ok(Some(password)) => {
+            println!("==================================================================");
+            println!(" Senha de admin do CapturaX / CapturaX admin password: {password}");
+            println!(" Coloque no CapturaX (Configurações → Transmissão). Para gerar outra:");
+            println!("   docker compose exec capturax-signal capturax-signal reset-admin");
+            println!("==================================================================");
+        }
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("Could not create the admin password in {}: {error}", data_dir.display());
+            std::process::exit(1);
+        }
+    }
+
     let address: SocketAddr = std::env::var("CAPTURAX_SIGNAL_ADDR").ok().and_then(|a| a.parse().ok()).unwrap_or(([127, 0, 0, 1], 8790).into());
-    let hub = Arc::new(Hub::default());
-    let app = Router::new().route("/signal", get(signal)).route("/signal/health", get(health)).with_state(hub);
+    let hub = Arc::new(Hub {
+        rooms: Mutex::default(),
+        per_ip: Mutex::default(),
+        next_id: AtomicU64::default(),
+        passwords,
+        usage_generation: watch::channel(0).0,
+        failures: Mutex::default(),
+    });
+    // Página de quem assiste: qualquer caminho desconhecido (ex.: `/v/<sala>`) recebe o index.html.
+    let site = std::path::PathBuf::from(std::env::var("CAPTURAX_SITE").unwrap_or_else(|_| "/site".into()));
+    let pages = ServeDir::new(&site).fallback(ServeFile::new(site.join("index.html")));
+    let app = Router::new()
+        .route("/signal", get(signal))
+        .route("/signal/health", get(health))
+        .route("/api/role", post(api_role).options(preflight))
+        .route("/api/usage-password", post(api_usage_password).options(preflight))
+        .fallback_service(pages)
+        .with_state(hub);
     let listener = tokio::net::TcpListener::bind(address).await.expect("bind");
     eprintln!("capturax-signal listening on {address}");
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
