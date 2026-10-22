@@ -16,7 +16,7 @@ import { VideoStreamContext } from "./VideoStreamContext";
 import { applyLanguageSetting, t } from "../i18n";
 import { P2PHost, type P2PState } from "../core/p2p/host";
 import { P2PAudio } from "../core/p2p/audio";
-import { newP2PKey, p2pLink, roomOf } from "../core/p2p/common";
+import { claimName, newP2PKey, p2pLink, type ClaimError } from "../core/p2p/common";
 
 type Activity = "idle" | "starting" | "active" | "stopping";
 export type OutputKind = "record" | "stream";
@@ -51,8 +51,10 @@ export type NativeContextType = {
     stopRecording: () => Promise<void>;
     /** Ao vivo, mudou fonte, áudio ou qualidade desde que a transmissão começou ("Aplicar" reinicia). */
     streamDirty: boolean;
-    /** Link P2P (sem abrir porta), se ligado nas configurações. */
+    /** Link P2P (sem abrir porta), se o servidor estiver configurado. */
     p2pLink: string | null;
+    /** Por que não há link P2P (apelido em uso, senha errada…). */
+    p2pLinkError: ClaimError | null;
     /** Pessoas assistindo pelo P2P agora. */
     p2pViewers: number;
     /** Conexão com o servidor de sinalização (só enquanto transmite). */
@@ -80,8 +82,8 @@ export type NativeContextType = {
 /** O que, se mudar ao vivo, só vale reiniciando a transmissão: fonte, dispositivos de áudio e qualidade. */
 function streamKey(config: Config, source: OutputSourceId) {
     const { recordInput, recordInputEnabled, recordMic, recordSystem } = config.audio;
-    const { width, height, fps, bitrateAuto, bitrateKbps, p2pEnabled, p2pServer, p2pPassword, maxViewers } = config.stream;
-    return JSON.stringify([source, recordInput, recordInputEnabled, recordMic, recordSystem, width, height, fps, bitrateAuto, bitrateKbps, p2pEnabled, p2pServer, p2pPassword, maxViewers]);
+    const { width, height, fps, bitrateAuto, bitrateKbps, p2pEnabled, p2pServer, p2pPassword, p2pNickname, p2pKey, maxViewers } = config.stream;
+    return JSON.stringify([source, recordInput, recordInputEnabled, recordMic, recordSystem, width, height, fps, bitrateAuto, bitrateKbps, p2pEnabled, p2pServer, p2pPassword, p2pNickname, p2pKey, maxViewers]);
 }
 
 /** P2P configurado (servidor + senha) e ligado. */
@@ -113,7 +115,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
     const [captureSources, setCaptureSources] = useState<CaptureSources>({ screens: [], windows: [] });
     const [outputs, setOutputs] = useState<Record<OutputKind, OutputInfo | null>>({ record: null, stream: null });
     const [feedback, setFeedbackState] = useState(false);
-    const [p2pRoom, setP2PRoom] = useState<string | null>(null);
+    const [p2pName, setP2PName] = useState<{ name: string } | { error: ClaimError } | null>(null);
     const [p2pViewers, setP2PViewers] = useState(0);
     const [p2pState, setP2PState] = useState<P2PState>("offline");
     const p2p = useRef<{ host: P2PHost; audio: P2PAudio } | null>(null);
@@ -268,8 +270,23 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
     const p2pKey = config?.stream.p2pKey;
     useEffect(() => {
         if (config && !p2pKey) updateConfig((c) => ({ ...c, stream: { ...c.stream, p2pKey: newP2PKey() } }));
-        if (p2pKey) roomOf(p2pKey).then(setP2PRoom);
     }, [p2pKey, !!config]);
+
+    // Reserva o nome do link no servidor (com uma pausa, para não perguntar a cada tecla).
+    const p2pServer = config?.stream.p2pServer ?? "";
+    const p2pPassword = config?.stream.p2pPassword ?? "";
+    const p2pNickname = config?.stream.p2pNickname ?? "";
+    useEffect(() => {
+        if (!p2pServer || !p2pPassword || !p2pKey) return setP2PName(null);
+        let current = true;
+        const timer = window.setTimeout(() => {
+            claimName(p2pServer, p2pPassword, p2pKey, p2pNickname).then((result) => current && setP2PName(result));
+        }, 700);
+        return () => {
+            current = false;
+            window.clearTimeout(timer);
+        };
+    }, [p2pServer, p2pPassword, p2pKey, p2pNickname]);
 
     // Idioma: o escolhido nas configurações ou o do Windows.
     const language = config?.language;
@@ -349,7 +366,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
             }
             const track = out.track;
             const settings = await resolveSupported(streamSettings(current.stream, sourceInfo(track)));
-            const { p2pServer, p2pPassword, p2pKey, maxViewers } = current.stream;
+            const { p2pServer, p2pPassword, p2pKey, p2pNickname, maxViewers } = current.stream;
             const p2pOn = p2pActive(current);
             // Link direto: codifica e serve por este PC. No P2P o WebRTC codifica (um encoder só).
             if (!p2pOn) {
@@ -366,6 +383,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
                     p2pServer,
                     p2pKey,
                     p2pPassword,
+                    p2pNickname,
                     track,
                     audio.track,
                     { height: settings.height, sourceHeight: sourceInfo(track).height, fps: settings.fps, bitrate: settings.bitrate },
@@ -375,6 +393,7 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
                         onState: (state) => {
                             setP2PState(state);
                             if (state === "unauthorized") alert(alerts.error(t("p2p.unauthorized")));
+                            if (state === "name_taken") alert(alerts.error(t("p2p.nameTaken")));
                         },
                     }
                 );
@@ -529,7 +548,8 @@ export function NativeProvider({ children }: { children: ComponentChildren }) {
                 stopRecording,
                 streamDirty: streaming === "active" && !!config && streamSnapshot !== null && streamKey(config, outputSource) !== streamSnapshot,
                 outputSource,
-                p2pLink: config && p2pConfigured(config) && p2pRoom ? p2pLink(config.stream.p2pServer, p2pRoom) : null,
+                p2pLink: config && p2pConfigured(config) && p2pName && "name" in p2pName ? p2pLink(config.stream.p2pServer, p2pName.name) : null,
+                p2pLinkError: p2pName && "error" in p2pName ? p2pName.error : null,
                 p2pViewers,
                 p2pState,
                 outputAutoAudioId: outputPaired === null ? (vsctx?.pairedAudioId ?? null) : outputPaired || null,

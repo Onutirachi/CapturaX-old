@@ -12,11 +12,11 @@ export type P2PQuality = {
     bitrate: number;
 };
 
-export type P2PState = "connecting" | "online" | "offline" | "unauthorized";
+export type P2PState = "connecting" | "online" | "offline" | "unauthorized" | "name_taken";
 
 type HostMessage =
     | { type: "ready"; room: string; role: string }
-    | { type: "unauthorized" }
+    | { type: "unauthorized" | "name_taken" | "name_invalid" }
     | { type: "join" | "leave"; peer: number }
     | { type: "signal"; peer: number; data: SignalData };
 
@@ -32,6 +32,7 @@ export class P2PHost {
         private server: string,
         private key: string,
         private password: string,
+        private nickname: string,
         private video: MediaStreamTrack,
         private audio: MediaStreamTrack | null,
         private quality: P2PQuality,
@@ -44,7 +45,7 @@ export class P2PHost {
     private connect() {
         if (this.closed) return;
         this.events.onState("connecting");
-        const ws = new WebSocket(`${signalUrl(this.server)}?role=host&key=${encodeURIComponent(this.key)}&pass=${encodeURIComponent(this.password)}`);
+        const ws = new WebSocket(`${signalUrl(this.server)}?role=host&key=${encodeURIComponent(this.key)}&pass=${encodeURIComponent(this.password)}&nick=${encodeURIComponent(this.nickname)}`);
         this.ws = ws;
         ws.onmessage = (event) => {
             try {
@@ -73,10 +74,12 @@ export class P2PHost {
                 this.events.onState("online");
                 break;
             case "unauthorized":
-                // Senha errada ou trocada pelo dono do servidor: não adianta tentar de novo.
+            case "name_taken":
+            case "name_invalid":
+                // Senha errada/trocada, ou apelido de outra pessoa: não adianta tentar de novo.
                 this.closed = true;
                 this.ws?.close();
-                this.events.onState("unauthorized");
+                this.events.onState(message.type === "unauthorized" ? "unauthorized" : "name_taken");
                 break;
             case "join":
                 this.addPeer(message.peer).catch((error) => console.error("P2P peer failed", error));

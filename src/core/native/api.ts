@@ -62,8 +62,10 @@ export type StreamConfig = {
     p2pServer: string;
     /** Senha de uso ou de admin desse servidor. */
     p2pPassword: string;
-    /** Segredo deste app; a sala do link é `sha256(segredo)`. */
+    /** Segredo deste app: o nome do link fica preso a ele no servidor. */
     p2pKey: string;
+    /** Apelido do link; vazio = código gerado pelo servidor. */
+    p2pNickname: string;
     /** Pessoas assistindo ao mesmo tempo (P2P ou link direto); 0 = sem limite. */
     maxViewers: number;
 };

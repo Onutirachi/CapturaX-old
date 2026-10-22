@@ -2,7 +2,7 @@
 // aparece o campo para trocar a senha de uso que o dono passa para os amigos.
 import { useContext, useEffect, useState } from "preact/hooks";
 import { NativeContext } from "../../context/NativeContext";
-import { newP2PKey, serverRole, setUsagePassword, type ServerRole } from "../../core/p2p/common";
+import { newP2PKey, serverRole, setUsagePassword, validNickname, type ServerRole } from "../../core/p2p/common";
 import { useT } from "../../i18n";
 import { Button, CopyField, Row, Section } from "./controls";
 
@@ -19,6 +19,9 @@ export default function P2PSettings() {
     const [check, setCheck] = useState<Check>({ state: "empty" });
     const [usage, setUsage] = useState("");
     const [usageSaved, setUsageSaved] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+    // Apelido em edição (vale ao sair do campo ou com Enter).
+    const [nickname, setNickname] = useState(stream.p2pNickname);
+    useEffect(() => setNickname(stream.p2pNickname), [stream.p2pNickname]);
 
     // Confere a senha no servidor (com uma pausa, para não perguntar a cada tecla).
     useEffect(() => {
@@ -58,6 +61,12 @@ export default function P2PSettings() {
     };
     const status = statusText();
     const ok = check.state === "checked" && check.role !== null;
+    const nicknameError =
+        nickname !== "" && !validNickname(nickname)
+            ? t("p2p.nicknameInvalid")
+            : nickname === stream.p2pNickname && nctx.p2pLinkError === "taken"
+              ? t("p2p.nicknameTaken")
+              : null;
 
     return (
         <Section title={t("p2p.title")} description={t("p2p.description")}>
@@ -77,10 +86,23 @@ export default function P2PSettings() {
                     </Button>
                 </Row>
             )}
+            {ok && (
+                <Row label={t("p2p.nickname")} hint={<span className={nicknameError ? "text-[goldenrod]" : ""}>{nicknameError ?? t("p2p.nicknameHint")}</span>}>
+                    <input
+                        value={nickname}
+                        placeholder={t("p2p.nicknamePlaceholder")}
+                        maxLength={20}
+                        onInput={(e) => setNickname(e.currentTarget.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                        onBlur={() => (nickname === "" || validNickname(nickname)) && set({ p2pNickname: nickname })}
+                        onKeyDown={(e) => e.key === "Enter" && (nickname === "" || validNickname(nickname)) && set({ p2pNickname: nickname })}
+                        className={input}
+                    />
+                </Row>
+            )}
             {nctx.p2pLink && (
-                <Row label={t("p2p.label")} hint={t("p2p.linkHint")}>
+                <Row label={t("p2p.label")} hint={stream.p2pNickname ? t("p2p.linkHintNickname") : t("p2p.linkHint")}>
                     <CopyField value={nctx.p2pLink} />
-                    <Button onClick={() => set({ p2pKey: newP2PKey() })}>{t("p2p.newLink")}</Button>
+                    {!stream.p2pNickname && <Button onClick={() => set({ p2pKey: newP2PKey() })}>{t("p2p.newLink")}</Button>}
                 </Row>
             )}
         </Section>

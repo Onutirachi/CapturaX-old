@@ -4,24 +4,28 @@
 //! "viewer") trocam por aqui ofertas/respostas SDP e candidatos ICE, alguns KB por pessoa. O vídeo
 //! vai direto entre eles (P2P); nada de mídia passa por este servidor.
 //!
-//! - Host: `GET /signal?role=host&key=<segredo>&pass=<senha>`. A sala é `sha256(segredo)` (40 hex),
-//!   então quem só conhece o link (que tem a sala) não consegue se passar pelo host. A senha é a de
-//!   uso ou a de admin do servidor (`passwords.rs`): só transmite por aqui quem o dono deixou.
-//! - Viewer: `GET /signal?role=viewer&room=<sala>`. Se o host não está, espera; quando ele entra,
+//! - Host: `GET /signal?role=host&key=<segredo>&pass=<senha>&nick=<apelido>`. A senha é a de uso
+//!   ou a de admin do servidor (`passwords.rs`): só transmite por aqui quem o dono deixou. A sala é
+//!   o nome do link (`names.rs`): o apelido, ou um código gerado, preso ao `sha256(segredo)`, então
+//!   quem só conhece o link não consegue se passar pelo host.
+//! - Viewer: `GET /signal?role=viewer&room=<nome>`. Se o host não está, espera; quando ele entra,
 //!   recebe o aviso e a conexão começa.
 //!
 //! Mensagens (JSON):
-//! - para o host: `ready {room, role}`, `unauthorized`, `join {peer}`, `leave {peer}`, `signal {peer, data}`
+//! - para o host: `ready {room, role}`, `unauthorized`, `name_taken`, `name_invalid`, `join {peer}`,
+//!   `leave {peer}`, `signal {peer, data}`
 //! - do host: `signal {peer, data}`, `kick {peer}`
 //! - para o viewer: `waiting`, `live`, `ended`, `signal {data}`, `kicked`
 //! - do viewer: `signal {data}`
 //!
 //! API (JSON, para o CapturaX): `POST /api/role {password}` → `{role: "admin"|"usage"|null}`;
-//! `POST /api/usage-password {admin, password}` troca a senha de uso (vazia = só o admin).
+//! `POST /api/usage-password {admin, password}` troca a senha de uso (vazia = só o admin);
+//! `POST /api/claim {password, key, nickname}` reserva o nome do link → `{name}` (409 = em uso).
 //! O resto do site é a página de quem assiste (`CAPTURAX_SITE`).
 //!
 //! `capturax-signal reset-admin` gera uma senha de admin nova (perdeu a antiga).
 
+mod names;
 mod passwords;
 
 use std::collections::HashMap;
@@ -37,6 +41,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
+use names::{valid_name, ClaimError, Names};
 use passwords::{Passwords, Role};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -71,6 +76,7 @@ struct Hub {
     per_ip: Mutex<HashMap<IpAddr, usize>>,
     next_id: AtomicU64,
     passwords: Passwords,
+    names: Names,
     /// Muda quando a senha de uso muda: quem transmite com ela é desconectado.
     usage_generation: watch::Sender<u64>,
     failures: Mutex<HashMap<IpAddr, (Instant, u32)>>,
@@ -113,16 +119,13 @@ struct Params {
     key: Option<String>,
     room: Option<String>,
     pass: Option<String>,
+    nick: Option<String>,
 }
 
-/// Sala de um segredo: 40 caracteres hex do SHA-256 (curto para o link, longo para não adivinhar).
-fn room_of(key: &str) -> String {
+/// Dono de um segredo (o app): 40 caracteres hex do SHA-256. Os nomes de link pertencem a ele.
+fn owner_of(key: &str) -> String {
     let digest = Sha256::digest(key.as_bytes());
     digest.iter().take(20).map(|b| format!("{b:02x}")).collect()
-}
-
-fn valid_room(room: &str) -> bool {
-    room.len() == 40 && room.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 fn text(value: Value) -> Utf8Bytes {
@@ -178,9 +181,14 @@ async fn signal(
     match (params.role.as_str(), params.key, params.room) {
         ("host", Some(key), _) if (16..=256).contains(&key.len()) => {
             let role = hub.role(ip, params.pass.unwrap_or_default()).await;
-            ws.on_upgrade(move |socket| host(socket, hub, room_of(&key), role, slot))
+            // Só quem pode transmitir reserva nome.
+            let room = match role {
+                Some(_) => claim(&hub, owner_of(&key), params.nick).await,
+                None => Err(ClaimError::Invalid),
+            };
+            ws.on_upgrade(move |socket| host(socket, hub, room, role, slot))
         }
-        ("viewer", _, Some(room)) if valid_room(&room) => ws.on_upgrade(move |socket| viewer(socket, hub, room, slot)),
+        ("viewer", _, Some(room)) if valid_name(&room) => ws.on_upgrade(move |socket| viewer(socket, hub, room, slot)),
         _ => (StatusCode::BAD_REQUEST, "bad request").into_response(),
     }
 }
@@ -215,16 +223,29 @@ async fn next_json(stream: &mut futures_util::stream::SplitStream<WebSocket>) ->
     }
 }
 
-async fn host(socket: WebSocket, hub: Arc<Hub>, room: String, role: Option<Role>, _slot: IpSlot) {
+/// Reserva o nome do link fora do executor (lê/grava o arquivo).
+async fn claim(hub: &Arc<Hub>, owner: String, nickname: Option<String>) -> Result<String, ClaimError> {
+    let hub = hub.clone();
+    tokio::task::spawn_blocking(move || hub.names.claim(&owner, nickname.as_deref())).await.unwrap_or(Err(ClaimError::Io))
+}
+
+async fn host(socket: WebSocket, hub: Arc<Hub>, room: Result<String, ClaimError>, role: Option<Role>, _slot: IpSlot) {
     let id = hub.next_id.fetch_add(1, Ordering::Relaxed);
     let (outbox, mut stream, writer) = split(socket);
-    let Some(role) = role else {
-        // Avisa pelo próprio WebSocket (o navegador não lê o status HTTP da recusa).
-        let _ = outbox.send(text(json!({ "type": "unauthorized" }))).await;
+    // Recusas avisadas pelo próprio WebSocket (o navegador não lê o status HTTP).
+    let refusal = match (&role, &room) {
+        (None, _) => Some("unauthorized"),
+        (_, Err(ClaimError::Taken)) => Some("name_taken"),
+        (_, Err(_)) => Some("name_invalid"),
+        _ => None,
+    };
+    if let Some(refusal) = refusal {
+        let _ = outbox.send(text(json!({ "type": refusal }))).await;
         tokio::time::sleep(Duration::from_millis(300)).await;
         writer.abort();
         return;
-    };
+    }
+    let (Some(role), Ok(room)) = (role, room) else { return };
     let mut usage_changes = hub.usage_generation.subscribe();
     let waiting: Vec<(u64, Outbox)> = {
         let mut rooms = hub.rooms.lock().unwrap();
@@ -274,20 +295,25 @@ async fn host(socket: WebSocket, hub: Arc<Hub>, room: String, role: Option<Role>
     }
 
     // Saiu: avisa quem assiste (se ainda for o host atual) e limpa a sala vazia.
-    let mut rooms = hub.rooms.lock().unwrap();
-    if let Some(entry) = rooms.get_mut(&room) {
-        if entry.host.as_ref().is_some_and(|(host, _)| *host == id) {
-            entry.host = None;
-            for viewer in entry.viewers.values() {
-                let _ = viewer.try_send(text(json!({ "type": "ended" })));
+    {
+        let mut rooms = hub.rooms.lock().unwrap();
+        if let Some(entry) = rooms.get_mut(&room) {
+            if entry.host.as_ref().is_some_and(|(host, _)| *host == id) {
+                entry.host = None;
+                for viewer in entry.viewers.values() {
+                    let _ = viewer.try_send(text(json!({ "type": "ended" })));
+                }
+            }
+            if entry.host.is_none() && entry.viewers.is_empty() {
+                rooms.remove(&room);
             }
         }
-        if entry.host.is_none() && entry.viewers.is_empty() {
-            rooms.remove(&room);
-        }
     }
-    drop(rooms);
     writer.abort();
+    // Transmitiu agora: o nome vale por mais 7 dias.
+    let names_hub = hub.clone();
+    let name = room.clone();
+    let _ = tokio::task::spawn_blocking(move || names_hub.names.touch(&name)).await;
 }
 
 async fn viewer(socket: WebSocket, hub: Arc<Hub>, room: String, _slot: IpSlot) {
@@ -401,6 +427,30 @@ async fn api_usage_password(State(hub): State<Arc<Hub>>, headers: HeaderMap, Con
     }
 }
 
+#[derive(Deserialize)]
+struct ClaimRequest {
+    password: String,
+    key: String,
+    nickname: Option<String>,
+}
+
+/// Reserva o nome do link (apelido ou código gerado) para o app mostrar antes de transmitir.
+async fn api_claim(State(hub): State<Arc<Hub>>, headers: HeaderMap, ConnectInfo(peer): ConnectInfo<SocketAddr>, Json(request): Json<ClaimRequest>) -> Response {
+    let ip = client_ip(&headers, peer);
+    if !(16..=256).contains(&request.key.len()) {
+        return cors((StatusCode::BAD_REQUEST, Json(json!({ "error": "bad_key" }))).into_response());
+    }
+    if hub.role(ip, request.password).await.is_none() {
+        return cors((StatusCode::UNAUTHORIZED, Json(json!({ "error": "unauthorized" }))).into_response());
+    }
+    match claim(&hub, owner_of(&request.key), request.nickname).await {
+        Ok(name) => cors(Json(json!({ "name": name })).into_response()),
+        Err(ClaimError::Taken) => cors((StatusCode::CONFLICT, Json(json!({ "error": "taken" }))).into_response()),
+        Err(ClaimError::Invalid) => cors((StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid" }))).into_response()),
+        Err(ClaimError::Io) => cors((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "save_failed" }))).into_response()),
+    }
+}
+
 /// A API é chamada pelo app (outra origem): libera CORS. A segurança é a senha, não a origem.
 fn cors(mut response: Response) -> Response {
     let headers = response.headers_mut();
@@ -458,6 +508,7 @@ async fn main() {
         rooms: Mutex::default(),
         per_ip: Mutex::default(),
         next_id: AtomicU64::default(),
+        names: Names::new(&data_dir),
         passwords,
         usage_generation: watch::channel(0).0,
         failures: Mutex::default(),
@@ -470,6 +521,7 @@ async fn main() {
         .route("/signal/health", get(health))
         .route("/api/role", post(api_role).options(preflight))
         .route("/api/usage-password", post(api_usage_password).options(preflight))
+        .route("/api/claim", post(api_claim).options(preflight))
         .fallback_service(pages)
         .with_state(hub);
     let listener = tokio::net::TcpListener::bind(address).await.expect("bind");
@@ -485,10 +537,9 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn room_is_derived_from_key() {
-        let room = super::room_of("segredo-de-teste-123");
-        assert_eq!(room.len(), 40);
-        assert!(super::valid_room(&room));
-        assert_ne!(room, super::room_of("outro-segredo-123"));
+    fn owner_is_derived_from_key() {
+        let owner = super::owner_of("segredo-de-teste-123");
+        assert_eq!(owner.len(), 40);
+        assert_ne!(owner, super::owner_of("outro-segredo-123"));
     }
 }

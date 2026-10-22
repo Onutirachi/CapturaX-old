@@ -131,8 +131,10 @@ pub struct StreamConfig {
     pub p2p_server: String,
     /// Senha de uso ou de admin desse servidor (quem só assiste não precisa de senha).
     pub p2p_password: String,
-    /// Segredo deste app; a sala do link é `sha256(segredo)`. Gerado pelo app na primeira vez.
+    /// Segredo deste app: o nome do link fica preso a ele no servidor. Gerado na primeira vez.
     pub p2p_key: String,
+    /// Apelido do link (`https://<servidor>/<apelido>`); vazio = código gerado pelo servidor.
+    pub p2p_nickname: String,
     /// Pessoas assistindo ao mesmo tempo (P2P ou link direto); 0 = sem limite.
     pub max_viewers: u32,
 }
@@ -155,6 +157,7 @@ impl Default for StreamConfig {
             p2p_server: String::new(),
             p2p_password: String::new(),
             p2p_key: String::new(),
+            p2p_nickname: String::new(),
             max_viewers: 0,
         }
     }

@@ -320,7 +320,7 @@ export const ptBR: Messages = {
     "p2p.connecting": "Conectando ao servidor P2P…",
     "p2p.title": "Link sem abrir porta (P2P)",
     "p2p.description": "O vídeo vai direto deste PC para cada espectador (WebRTC). O servidor só apresenta os dois lados; nenhum vídeo passa por ele.",
-    "p2p.linkHint": "Sempre o mesmo. Gerar um novo faz o antigo parar de funcionar.",
+    "p2p.linkHint": "Gerado pelo servidor e mantido enquanto você transmitir pelo menos uma vez a cada 7 dias. Gerar outro faz o antigo parar de funcionar.",
     "p2p.newLink": "Gerar outro",
     "p2p.server": "Servidor de sinalização",
     "p2p.unauthorized": "O servidor P2P recusou a senha (errada, ou trocada pelo dono do servidor).",
@@ -344,4 +344,12 @@ export const ptBR: Messages = {
 
     "viewers.limit": "Limite de espectadores",
     "viewers.unlimited": "Ilimitado",
+
+    "p2p.nickname": "Apelido do link",
+    "p2p.nicknamePlaceholder": "ex.: carlos (opcional)",
+    "p2p.nicknameHint": "Opcional: deixa o link curto e fácil (fica seu enquanto você transmitir pelo menos uma vez a cada 7 dias).",
+    "p2p.nicknameInvalid": "De 3 a 20 letras minúsculas, números ou hífen.",
+    "p2p.nicknameTaken": "Este apelido já está em uso. Escolha outro.",
+    "p2p.linkHintNickname": "Fica seu enquanto você transmitir pelo menos uma vez a cada 7 dias.",
+    "p2p.nameTaken": "O apelido do link já está em uso. Escolha outro em Configurações → Transmissão.",
 };
